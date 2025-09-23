@@ -17,3 +17,20 @@ services:
     image: redis:7
     ports:
       - "6379:6379"
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    environment:
+      ASPNETCORE_URLS: http://+:8080
+      ASPNETCORE_ENVIRONMENT: Development
+      ConnectionStrings__postgres: Host=db;Port=5432;Database=ffaas;Username=ffaas;Password=ffaas
+      ConnectionStrings__redis: redis:6379
+    ports:
+      - "8080:8080"
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_started
