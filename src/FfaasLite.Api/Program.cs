@@ -7,6 +7,7 @@ using FfaasLite.Infrastructure.Db;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
@@ -42,6 +43,8 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 
+var sseClients = new List<HttpResponse>();
+
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
 app.MapPost("/api/flags", async ([FromBody] FlagCreateDto dto, AppDbContext db, RedisCache cache) =>
@@ -60,8 +63,7 @@ app.MapPost("/api/flags", async ([FromBody] FlagCreateDto dto, AppDbContext db, 
     db.Audit.Add(new AuditEntry { Action = "create", FlagKey = flag.Key, DiffJson = new AuditDiff { Before = null, Updated = flag } });
     await db.SaveChangesAsync();
 
-    //TODO: await BroadcastChange(flag);
-    await cache.SetAsync($"flag:{flag.Key}", flag, TimeSpan.FromMinutes(5));
+    await BroadcastChange(flag);
     await cache.RemoveAsync("flags:all");
     return Results.Created($"/api/flags/{flag.Key}", flag);
 });
@@ -119,8 +121,8 @@ app.MapPut("/api/flags/{key}", async (string key, [FromBody] FlagUpdateDto dto, 
     db.Audit.Add(new AuditEntry { Action = "update", FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = existing } });
     await db.SaveChangesAsync();
 
-    //TODO: await BroadcastChange(existing);
-    await cache.SetAsync($"flag:{key}", existing, TimeSpan.FromMinutes(5));
+    await BroadcastChange(existing);
+    await cache.RemoveAsync($"flag:{key}");
     await cache.RemoveAsync("flags:all");
     return Results.Ok(existing);
 });
@@ -147,16 +149,16 @@ app.MapDelete("api/flags/{key}", async (string key, AppDbContext db) =>
 app.MapGet("/api/audit", async (AppDbContext db) => Results.Ok(await db.Audit.AsNoTracking().OrderByDescending(a => a.At).Take(100).ToListAsync()));
 
 app.MapPost("/api/evaluate/{key}", async (
-    [FromRoute] string key, 
-    [FromBody] EvalContext ctx, 
-    [FromServices] AppDbContext db, 
-    [FromServices] IFlagEvaluator eval, 
+    [FromRoute] string key,
+    [FromBody] EvalContext ctx,
+    [FromServices] AppDbContext db,
+    [FromServices] IFlagEvaluator eval,
     [FromServices] RedisCache cache) =>
 {
     var cacheKey = $"flag:{key}";
     var flag = await cache.GetAsync<Flag>(cacheKey);
     if (flag is null)
-    { 
+    {
         flag = await db.Flags.AsNoTracking().FirstOrDefaultAsync(f => f.Key == key);
         if (flag is null) return Results.NotFound();
         await cache.SetAsync(cacheKey, flag);
@@ -172,5 +174,47 @@ app.MapPost("/api/evaluate/{key}", async (
     operation.Description = "Returns an evaluation result or 404 if the flag doesn't exist.";
     return operation;
 });
+
+app.MapGet("/api/stream", async (HttpContext context) =>
+{
+    context.Response.Headers.Append("Content-Type", "text/event-stream");
+    lock (sseClients) sseClients.Add(context.Response);
+    var tcs = new TaskCompletionSource();
+    context.RequestAborted.Register(() => { lock (sseClients) sseClients.Remove(context.Response); tcs.TrySetResult(); });
+    await tcs.Task;
+});
+
+app.Map("/ws", async (HttpContext context) =>
+{
+    if (context.WebSockets.IsWebSocketRequest)
+    {
+        using var ws = await context.WebSockets.AcceptWebSocketAsync();
+        var tcs = new TaskCompletionSource();
+        context.RequestAborted.Register(() => tcs.TrySetResult());
+        await tcs.Task;
+    }
+    else context.Response.StatusCode = 400;
+});
+
+async Task BroadcastChange(Flag flag)
+{
+    var json = JsonSerializer.Serialize(flag);
+    var data = $"data: {json}\n\n";
+    var bytes = Encoding.UTF8.GetBytes(data);
+    List<HttpResponse> targets;
+    lock (sseClients) targets = sseClients.ToList();
+    foreach (var resp in targets)
+    {
+        try
+        {
+            await resp.Body.WriteAsync(bytes);
+            await resp.Body.FlushAsync();
+        }
+        catch
+        {
+            lock (sseClients) sseClients.Remove(resp);
+        }
+    }
+}
 
 app.Run();
