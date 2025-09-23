@@ -1,6 +1,7 @@
 ﻿using FfaasLite.Core.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using System.Text.Json;
 
 namespace FfaasLite.Infrastructure.Db
 {
@@ -18,7 +19,12 @@ namespace FfaasLite.Infrastructure.Db
                 e.HasKey(x => x.Id);
                 e.HasIndex(x => x.Key).IsUnique();
                 e.Property(x => x.Type).HasConversion(new EnumToStringConverter<FlagType>());
-                e.Property(x => x.Rules).HasColumnType("jsonb");
+                e.Property(x => x.Rules)
+                    .HasColumnType("jsonb")
+                    .HasConversion(
+                        v => JsonSerializer.Serialize(v, (JsonSerializerOptions?)null),
+                        v => JsonSerializer.Deserialize<List<TargetRule>>(v, (JsonSerializerOptions?)null) ?? new()
+                    );
             });
             modelBuilder.Entity<AuditEntry>(e => e.HasKey(x => x.Id));
         }
