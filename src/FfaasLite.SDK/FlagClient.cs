@@ -1,8 +1,10 @@
 ﻿using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using System.Collections.Concurrent;
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace FfaasLite.SDK
 {
@@ -19,7 +21,38 @@ namespace FfaasLite.SDK
         public FlagClient(string baseUrl, HttpClient? http = null)
         {
             _baseUrl = baseUrl.TrimEnd('/');
-            _http = http ?? new HttpClient();
+
+            _json.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+
+            if (http is null)
+            {
+                // Надёжный handler для локалки/докера
+                var handler = new SocketsHttpHandler
+                {
+                    // иногда системный прокси даёт 502 на localhost
+                    UseProxy = false,
+                    Proxy = null,
+
+                    // нормализуем таймауты и похендлим DNS/KeepAlive
+                    PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+                    ConnectTimeout = TimeSpan.FromSeconds(5),
+                    AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
+                };
+
+                _http = new HttpClient(handler)
+                {
+                    Timeout = TimeSpan.FromSeconds(10),
+                    DefaultRequestVersion = HttpVersion.Version11, // форсим HTTP/1.1
+                    DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
+                };
+            }
+            else
+            {
+                _http = http;
+                // на всякий случай тоже форсим
+                _http.DefaultRequestVersion = HttpVersion.Version11;
+                _http.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
+            }
         }
 
         public async Task<EvalResult> EvaluateAsync(string key, EvalContext ctx, CancellationToken ct = default)
@@ -34,8 +67,8 @@ namespace FfaasLite.SDK
             var resp = await _http.PostAsJsonAsync(url, ctx, _json, ct);
             resp.EnsureSuccessStatusCode();
 
-            var result = await resp.Content.ReadFromJsonAsync<EvalResult>(_json, ct);
-            if (result is null) throw new InvalidOperationException("Empty EvalResult from server.");
+            var result = await resp.Content.ReadFromJsonAsync<EvalResult>(_json, ct)
+                         ?? throw new InvalidOperationException("Empty EvalResult from server.");
 
             return Normalize(result);
         }
