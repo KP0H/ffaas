@@ -17,13 +17,22 @@ namespace FfaasLite.Core.Flags
 
             foreach (var r in rules)
             {
-                var attrVal = r.Attribute switch
-                {
-                    "UserId" => ctx.UserId,
-                    _ => ctx.Attributes != null && ctx.Attributes.TryGetValue(r.Attribute, out var v) ? v : null
-                };
+                string? attrVal = null;
 
-                if (attrVal != null && Compare(attrVal, r.Operator, r.Value))
+                if (string.Equals(r.Attribute, "userId", StringComparison.OrdinalIgnoreCase))
+                {
+                    attrVal = ctx.UserId;
+                }
+                else if (ctx.Attributes is not null)
+                {
+                    if (!ctx.Attributes.TryGetValue(r.Attribute, out attrVal))
+                    {
+                        var hit = ctx.Attributes.FirstOrDefault(kv => string.Equals(kv.Key, r.Attribute, StringComparison.OrdinalIgnoreCase));
+                        if (!string.IsNullOrEmpty(hit.Key)) attrVal = hit.Value;
+                    }
+                }
+
+                if (attrVal is not null && Compare(attrVal, r.Operator, r.Value))
                 {
                     object? val = flag.Type switch
                     {
@@ -32,7 +41,7 @@ namespace FfaasLite.Core.Flags
                         FlagType.Number => (object?)r.NumberOverride ?? flag.NumberValue,
                         _ => null
                     };
-                    return new EvalResult(flag.Key, val, flag.Type, Variant: $"rule", AsOf: DateTimeOffset.UtcNow);
+                    return new EvalResult(flag.Key, val, flag.Type, Variant: "rule", AsOf: DateTimeOffset.UtcNow);
                 }
             }
 
@@ -49,12 +58,12 @@ namespace FfaasLite.Core.Flags
 
 
         private static bool Compare(string left, string op, string right)
-        => op switch
-        {
-            "eq" => string.Equals(left, right, StringComparison.OrdinalIgnoreCase),
-            "ne" => !string.Equals(left, right, StringComparison.OrdinalIgnoreCase),
-            "contains" => left.Contains(right, StringComparison.OrdinalIgnoreCase),
-            _ => false
-        };
+            => op switch
+            {
+                "eq" => string.Equals(left, right, StringComparison.OrdinalIgnoreCase),
+                "ne" => !string.Equals(left, right, StringComparison.OrdinalIgnoreCase),
+                "contains" => left.Contains(right, StringComparison.OrdinalIgnoreCase),
+                _ => false
+            };
     }
 }
