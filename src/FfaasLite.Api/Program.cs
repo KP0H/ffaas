@@ -44,7 +44,7 @@ app.UseSwaggerUI();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-app.MapPost("/api/flags", async ([FromBody] FlagCreateDto dto, AppDbContext db) =>
+app.MapPost("/api/flags", async ([FromBody] FlagCreateDto dto, AppDbContext db, RedisCache cache) =>
 {
     var flag = new Flag
     {
@@ -61,22 +61,37 @@ app.MapPost("/api/flags", async ([FromBody] FlagCreateDto dto, AppDbContext db) 
     await db.SaveChangesAsync();
 
     //TODO: await BroadcastChange(flag);
+    await cache.SetAsync($"flag:{flag.Key}", flag, TimeSpan.FromMinutes(5));
+    await cache.RemoveAsync("flags:all");
     return Results.Created($"/api/flags/{flag.Key}", flag);
 });
 
-app.MapGet("/api/flags", async (AppDbContext db) =>
+app.MapGet("/api/flags", async (AppDbContext db, RedisCache cache) =>
 {
-    var flags = await db.Flags.AsNoTracking().ToListAsync();
+    const string cacheKey = "flags:all";
+    var flags = await cache.GetAsync<List<Flag>>(cacheKey);
+    if (flags is null)
+    {
+        flags = await db.Flags.AsNoTracking().ToListAsync();
+        await cache.SetAsync(cacheKey, flags, TimeSpan.FromMinutes(2));
+    }
     return Results.Ok(flags);
 });
 
-app.MapGet("/api/flags/{key}", async (string key, AppDbContext db) =>
+app.MapGet("/api/flags/{key}", async (string key, AppDbContext db, RedisCache cache) =>
 {
-    var flag = await db.Flags.AsNoTracking().FirstOrDefaultAsync(f => f.Key == key);
-    return flag is null ? Results.NotFound() : Results.Ok(flag);
+    var cacheKey = $"flag:{key}";
+    var flag = await cache.GetAsync<Flag>(cacheKey);
+    if (flag is null)
+    {
+        flag = await db.Flags.AsNoTracking().FirstOrDefaultAsync(f => f.Key == key);
+        if (flag is null) return Results.NotFound();
+        await cache.SetAsync(cacheKey, flag);
+    }
+    return Results.Ok(flag);
 });
 
-app.MapPut("/api/flags/{key}", async (string key, [FromBody] FlagUpdateDto dto, AppDbContext db) =>
+app.MapPut("/api/flags/{key}", async (string key, [FromBody] FlagUpdateDto dto, AppDbContext db, RedisCache cache) =>
 {
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
@@ -105,7 +120,8 @@ app.MapPut("/api/flags/{key}", async (string key, [FromBody] FlagUpdateDto dto, 
     await db.SaveChangesAsync();
 
     //TODO: await BroadcastChange(existing);
-    
+    await cache.SetAsync($"flag:{key}", existing, TimeSpan.FromMinutes(5));
+    await cache.RemoveAsync("flags:all");
     return Results.Ok(existing);
 });
 
@@ -122,14 +138,29 @@ app.MapDelete("api/flags/{key}", async (string key, AppDbContext db) =>
     db.Audit.Add(new AuditEntry { Action = "delete", FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = null } });
     await db.SaveChangesAsync();
 
+    var cache = app.Services.GetRequiredService<RedisCache>();
+    await cache.RemoveAsync($"flag:{key}");
+    await cache.RemoveAsync("flags:all");
     return Results.NoContent();
 });
 
 app.MapGet("/api/audit", async (AppDbContext db) => Results.Ok(await db.Audit.AsNoTracking().OrderByDescending(a => a.At).Take(100).ToListAsync()));
 
-app.MapPost("/api/evaluate/{key}", async (string key, [FromBody] EvalContext ctx, [FromServices] AppDbContext db, [FromServices] IFlagEvaluator eval) =>
+app.MapPost("/api/evaluate/{key}", async (
+    [FromRoute] string key, 
+    [FromBody] EvalContext ctx, 
+    [FromServices] AppDbContext db, 
+    [FromServices] IFlagEvaluator eval, 
+    [FromServices] RedisCache cache) =>
 {
-    var flag = await db.Flags.AsNoTracking().FirstOrDefaultAsync(f => f.Key == key);
+    var cacheKey = $"flag:{key}";
+    var flag = await cache.GetAsync<Flag>(cacheKey);
+    if (flag is null)
+    { 
+        flag = await db.Flags.AsNoTracking().FirstOrDefaultAsync(f => f.Key == key);
+        if (flag is null) return Results.NotFound();
+        await cache.SetAsync(cacheKey, flag);
+    }
     return flag is null ? Results.NotFound() : Results.Ok(eval.Evaluate(flag, ctx));
 })
 .WithName("EvaluateFlag")

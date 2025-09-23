@@ -7,6 +7,47 @@ namespace FfaasLite.Tests
     public class FlagEvaluatorGeneralFlagTests
     {
         [Fact]
+        public void Unknown_Operator_Is_Ignored()
+        {
+            var flag = new Flag
+            {
+                Key = "k",
+                Type = FlagType.Boolean,
+                BoolValue = true,
+                Rules = new() { new TargetRule("country", "gt", "NL", 1, BoolOverride: false) }
+            };
+            var ctx = new EvalContext("u1", new() { ["country"] = "NL" });
+
+            var res = new FlagEvaluator().Evaluate(flag, ctx);
+
+            Assert.True((bool)res.Value!);
+            Assert.Equal("default", res.Variant);
+        }
+
+        [Fact]
+        public void Same_Priority_First_Wins()
+        {
+            var flag = new Flag
+            {
+                Key = "k",
+                Type = FlagType.Boolean,
+                BoolValue = false,
+                Rules =
+                [
+                    new("country","eq","NL", 1, BoolOverride:false),
+                    new("country","eq","NL", 1, BoolOverride:true)
+                ]
+            };
+            var ctx = new EvalContext("u1", new() { ["country"] = "NL" });
+
+            var res = new FlagEvaluator().Evaluate(flag, ctx);
+
+            Assert.False((bool)res.Value!);
+            Assert.Equal("rule", res.Variant);
+        }
+
+
+        [Fact]
         public void Priority_Null_Rules_Run_Last()
         {
             var flag = new Flag

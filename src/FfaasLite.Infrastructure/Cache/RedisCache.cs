@@ -1,4 +1,5 @@
-﻿using StackExchange.Redis;
+﻿using Microsoft.EntityFrameworkCore.Metadata.Internal;
+using StackExchange.Redis;
 using System.Text.Json;
 
 namespace FfaasLite.Infrastructure.Cache
@@ -17,5 +18,8 @@ namespace FfaasLite.Infrastructure.Cache
             var val = await _db.StringGetAsync(key);
             return val.HasValue ? JsonSerializer.Deserialize<T>(val!, _json) : default;
         }
+
+        public async Task RemoveAsync(string key) 
+            => await _db.KeyDeleteAsync(key);
     }
 }

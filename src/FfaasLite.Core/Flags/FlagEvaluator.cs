@@ -19,7 +19,7 @@ namespace FfaasLite.Core.Flags
             {
                 var attrVal = r.Attribute switch
                 {
-                    "userId" => ctx.UserId,
+                    "UserId" => ctx.UserId,
                     _ => ctx.Attributes != null && ctx.Attributes.TryGetValue(r.Attribute, out var v) ? v : null
                 };
 
