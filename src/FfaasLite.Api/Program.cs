@@ -1,3 +1,5 @@
+using FfaasLite.Api.Contracts;
+using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using FfaasLite.Infrastructure.Cache;
 using FfaasLite.Infrastructure.Db;
@@ -17,7 +19,10 @@ builder.Services.ConfigureHttpJsonOptions(options =>
 });
 
 builder.Services.AddEndpointsApiExplorer();
-builder.Services.AddSwaggerGen();
+builder.Services.AddSwaggerGen(c =>
+{
+    c.SupportNonNullableReferenceTypes();
+});
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
     opt.UseNpgsql(cfg.GetConnectionString("postgres")));
@@ -27,6 +32,8 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 
 builder.Services.AddSingleton<RedisCache>();
 
+builder.Services.AddSingleton<IFlagEvaluator, FlagEvaluator>();
+
 var app = builder.Build();
 
 app.UseSwagger();
@@ -34,8 +41,18 @@ app.UseSwaggerUI();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-app.MapPost("/api/flags", async ([FromBody] Flag flag, AppDbContext db) =>
+app.MapPost("/api/flags", async ([FromBody] FlagCreateDto dto, AppDbContext db) =>
 {
+    var flag = new Flag
+    {
+        Key = dto.Key,
+        Type = dto.Type,
+        BoolValue = dto.BoolValue,
+        StringValue = dto.StringValue,
+        NumberValue = dto.NumberValue,
+        Rules = dto.Rules ?? new()
+    };
+
     db.Flags.Add(flag);
     db.Audit.Add(new AuditEntry { Action = "create", FlagKey = flag.Key, DiffJson = new AuditDiff { Before = null, Updated = flag } });
     await db.SaveChangesAsync();
@@ -56,7 +73,7 @@ app.MapGet("/api/flags/{key}", async (string key, AppDbContext db) =>
     return flag is null ? Results.NotFound() : Results.Ok(flag);
 });
 
-app.MapPut("/api/flags/{key}", async (string key, [FromBody] Flag updated, AppDbContext db) =>
+app.MapPut("/api/flags/{key}", async (string key, [FromBody] FlagUpdateDto dto, AppDbContext db) =>
 {
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
@@ -73,11 +90,11 @@ app.MapPut("/api/flags/{key}", async (string key, [FromBody] Flag updated, AppDb
         UpdatedAt = existing.UpdatedAt
     };
 
-    existing.Type = updated.Type;
-    existing.BoolValue = updated.BoolValue;
-    existing.StringValue = updated.StringValue;
-    existing.NumberValue = updated.NumberValue;
-    existing.Rules = updated.Rules;
+    existing.Type = dto.Type;
+    existing.BoolValue = dto.BoolValue;
+    existing.StringValue = dto.StringValue;
+    existing.NumberValue = dto.NumberValue;
+    existing.Rules = dto.Rules ?? new();
     existing.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync();
 
@@ -106,5 +123,20 @@ app.MapDelete("api/flags/{key}", async (string key, AppDbContext db) =>
 });
 
 app.MapGet("/api/audit", async (AppDbContext db) => Results.Ok(await db.Audit.AsNoTracking().OrderByDescending(a => a.At).Take(100).ToListAsync()));
+
+app.MapPost("/api/evaluate/{key}", async (string key, [FromBody] EvalContext ctx, [FromServices] AppDbContext db, [FromServices] IFlagEvaluator eval) =>
+{
+    var flag = await db.Flags.AsNoTracking().FirstOrDefaultAsync(f => f.Key == key);
+    return flag is null ? Results.NotFound() : Results.Ok(eval.Evaluate(flag, ctx));
+})
+.WithName("EvaluateFlag")
+.Produces<EvalResult>(StatusCodes.Status200OK)
+.Produces(StatusCodes.Status404NotFound)
+.WithOpenApi(operation =>
+{
+    operation.Summary = "Evaluate feature flag for a given context";
+    operation.Description = "Returns an evaluation result or 404 if the flag doesn't exist.";
+    return operation;
+});
 
 app.Run();
