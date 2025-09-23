@@ -1,4 +1,5 @@
 using FfaasLite.Api.Contracts;
+using FfaasLite.Api.Helpers;
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using FfaasLite.Infrastructure.Cache;
@@ -22,6 +23,8 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen(c =>
 {
     c.SupportNonNullableReferenceTypes();
+
+    c.SchemaGeneratorOptions.SchemaFilters.Add(new EnumSchemaFilter());
 });
 
 builder.Services.AddDbContext<AppDbContext>(opt =>
