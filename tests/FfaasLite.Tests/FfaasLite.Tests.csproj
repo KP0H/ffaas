@@ -18,6 +18,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\FfaasLite.Core\FfaasLite.Core.csproj" />
+    <ProjectReference Include="..\..\src\FfaasLite.SDK\FfaasLite.SDK.csproj" />
   </ItemGroup>
 
   <ItemGroup>
