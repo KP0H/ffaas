@@ -7,6 +7,12 @@
         public string Action { get; set; } = string.Empty; // create/update/delete
         public string FlagKey { get; set; } = string.Empty;
         public DateTimeOffset At { get; set; } = DateTimeOffset.UtcNow;
-        public string? DiffJson { get; set; }
+        public AuditDiff? DiffJson { get; set; }
+    }
+
+    public class AuditDiff
+    {
+        public Flag? Before { get; set; }
+        public Flag? Updated { get; set; }
     }
 }

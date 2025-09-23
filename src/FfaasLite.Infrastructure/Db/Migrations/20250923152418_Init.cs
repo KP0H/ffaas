@@ -1,6 +1,4 @@
 ﻿using System;
-using System.Collections.Generic;
-using FfaasLite.Core.Models;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -22,7 +20,7 @@ namespace FfaasLite.Infrastructure.Db.Migrations
                     Action = table.Column<string>(type: "text", nullable: false),
                     FlagKey = table.Column<string>(type: "text", nullable: false),
                     At = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false),
-                    DiffJson = table.Column<string>(type: "text", nullable: true)
+                    DiffJson = table.Column<string>(type: "jsonb", nullable: true)
                 },
                 constraints: table =>
                 {
@@ -39,7 +37,7 @@ namespace FfaasLite.Infrastructure.Db.Migrations
                     BoolValue = table.Column<bool>(type: "boolean", nullable: true),
                     StringValue = table.Column<string>(type: "text", nullable: true),
                     NumberValue = table.Column<double>(type: "double precision", nullable: true),
-                    Rules = table.Column<List<TargetRule>>(type: "jsonb", nullable: false),
+                    Rules = table.Column<string>(type: "jsonb", nullable: false),
                     UpdatedAt = table.Column<DateTimeOffset>(type: "timestamp with time zone", nullable: false)
                 },
                 constraints: table =>

@@ -12,6 +12,7 @@ var cfg = builder.Configuration;
 
 builder.Services.ConfigureHttpJsonOptions(options =>
 {
+    options.SerializerOptions.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
     options.SerializerOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
 });
 
@@ -36,7 +37,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 app.MapPost("/api/flags", async ([FromBody] Flag flag, AppDbContext db) =>
 {
     db.Flags.Add(flag);
-    db.Audit.Add(new AuditEntry { Action = "create", FlagKey = flag.Key, DiffJson = JsonSerializer.Serialize(flag) });
+    db.Audit.Add(new AuditEntry { Action = "create", FlagKey = flag.Key, DiffJson = new AuditDiff { Before = null, Updated = flag } });
     await db.SaveChangesAsync();
 
     //TODO: await BroadcastChange(flag);
@@ -59,8 +60,19 @@ app.MapPut("/api/flags/{key}", async (string key, [FromBody] Flag updated, AppDb
 {
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
-    
-    var before = JsonSerializer.Serialize(existing);
+
+    var beforeObj = new Flag
+    {
+        Id = existing.Id,
+        Key = existing.Key,
+        Type = existing.Type,
+        BoolValue = existing.BoolValue,
+        StringValue = existing.StringValue,
+        NumberValue = existing.NumberValue,
+        Rules = [.. existing.Rules],
+        UpdatedAt = existing.UpdatedAt
+    };
+
     existing.Type = updated.Type;
     existing.BoolValue = updated.BoolValue;
     existing.StringValue = updated.StringValue;
@@ -68,9 +80,8 @@ app.MapPut("/api/flags/{key}", async (string key, [FromBody] Flag updated, AppDb
     existing.Rules = updated.Rules;
     existing.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync();
-    
-    var diff = JsonSerializer.Serialize(new { before, updated });
-    db.Audit.Add(new AuditEntry { Action = "update", FlagKey = key, DiffJson = diff });
+
+    db.Audit.Add(new AuditEntry { Action = "update", FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = existing } });
     await db.SaveChangesAsync();
 
     //TODO: await BroadcastChange(existing);
@@ -83,11 +94,17 @@ app.MapDelete("api/flags/{key}", async (string key, AppDbContext db) =>
 {
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
+    var beforeObj = existing;
 
     db.Flags.Remove(existing);
     await db.SaveChangesAsync();
 
-    return Results.Ok(new { key, status = "removed" });
+    db.Audit.Add(new AuditEntry { Action = "delete", FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = null } });
+    await db.SaveChangesAsync();
+
+    return Results.NoContent();
 });
+
+app.MapGet("/api/audit", async (AppDbContext db) => Results.Ok(await db.Audit.AsNoTracking().OrderByDescending(a => a.At).Take(100).ToListAsync()));
 
 app.Run();
