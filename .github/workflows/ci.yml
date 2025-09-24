@@ -2,9 +2,17 @@ name: CI
 
 on:
   push:
-    branches: [ ci, develop ]
+    branches:
+      - master
+      - develop
+      - 'feature/**'
+      - 'bugfix/**'
+      - 'hotfix/**'
   pull_request:
-    branches: [ master ]
+    branches:
+      - master
+      - develop
+  workflow_dispatch: {}
 
 permissions:
   contents: read
@@ -25,8 +33,7 @@ jobs:
       - name: Setup .NET 8 SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: |
-            8.0.x
+          dotnet-version: 8.0.x
 
       - name: Restore
         run: dotnet restore FfaasLite.sln
