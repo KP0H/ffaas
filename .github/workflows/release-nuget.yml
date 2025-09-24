@@ -1,0 +1,87 @@
+name: Release SDK (NuGet Trusted Publishing)
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  id-token: write
+  packages: write
+
+env:
+  PROJECT_PATH: src/FfaasLite.SDK/FfaasLite.SDK.csproj
+  ARTIFACT_DIR: artifacts
+
+jobs:
+  pack-and-publish:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Compute version from tag
+        id: ver
+        run: |
+          TAG="${GITHUB_REF_NAME}"          # e.g. v1.2.3 or v1.2.3-preview.1
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+
+      - name: Restore
+        run: dotnet restore ${{ env.PROJECT_PATH }}
+
+      - name: Build (Release)
+        run: dotnet build ${{ env.PROJECT_PATH }} -c Release --no-restore /p:ContinuousIntegrationBuild=true
+
+      - name: Pack (nupkg + snupkg)
+        run: >
+          dotnet pack ${{ env.PROJECT_PATH }}
+          -c Release
+          -o ${{ env.ARTIFACT_DIR }}
+          --no-build
+          /p:PackageVersion=${{ steps.ver.outputs.version }}
+          /p:ContinuousIntegrationBuild=true
+          /p:IncludeSymbols=true
+          /p:SymbolPackageFormat=snupkg
+          /p:Deterministic=true
+
+      - name: NuGet login (OIDC → temp API key)
+        id: login
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USERNAME }}
+
+      - name: Publish to nuget.org (Trusted Publishing)
+        run: |
+          dotnet nuget push "${{ env.ARTIFACT_DIR }}/*.nupkg" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+          dotnet nuget push "${{ env.ARTIFACT_DIR }}/*.snupkg" \
+            --api-key "${{ steps.login.outputs.NUGET_API_KEY }}" \
+            --source https://api.nuget.org/v3/index.json \
+            --skip-duplicate
+
+      - name: Publish to GitHub Packages (optional)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GHP_TOKEN }}
+        run: |
+          OWNER="$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)"
+          SRC="https://nuget.pkg.github.com/${OWNER}/index.json"
+          dotnet nuget push "${{ env.ARTIFACT_DIR }}/*.nupkg" --api-key "$GITHUB_TOKEN" --source "$SRC" --skip-duplicate
+          dotnet nuget push "${{ env.ARTIFACT_DIR }}/*.snupkg" --api-key "$GITHUB_TOKEN" --source "$SRC" --skip-duplicate
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sdk-nuget-${{ steps.ver.outputs.version }}
+          path: ${{ env.ARTIFACT_DIR }}/
