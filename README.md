@@ -1,6 +1,10 @@
 # ffaas
 FFaaS-lite — Feature Flags as Code (MVP)
 
+[![NuGet](https://img.shields.io/nuget/v/FfaasLite.SDK.svg)](https://www.nuget.org/packages/FfaasLite.SDK)
+[![GitHub package](https://img.shields.io/badge/packages-github-blue)](https://github.com/KP0H/ffaas/pkgs/nuget/FfaasLite.SDK)
+
+
 Minimal service for Feature Flags with SDK for .NET:
 - **API**: ASP.NET Core 8
 - **Хранение**: PostgreSQL (`jsonb`)
