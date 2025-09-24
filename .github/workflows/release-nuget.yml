@@ -73,7 +73,7 @@ jobs:
 
       - name: Publish to GitHub Packages (optional)
         env:
-          GITHUB_TOKEN: ${{ secrets.GHP_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           OWNER="$(echo "${GITHUB_REPOSITORY}" | cut -d'/' -f1)"
           SRC="https://nuget.pkg.github.com/${OWNER}/index.json"
