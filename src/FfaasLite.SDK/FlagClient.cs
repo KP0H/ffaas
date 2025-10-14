@@ -1,4 +1,4 @@
-﻿using FfaasLite.Core.Flags;
+using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using System.Collections.Concurrent;
 using System.Net;
@@ -26,14 +26,14 @@ namespace FfaasLite.SDK
 
             if (http is null)
             {
-                // Надёжный handler для локалки/докера
+                // Prefer a predictable handler for local development and container scenarios
                 var handler = new SocketsHttpHandler
                 {
-                    // иногда системный прокси даёт 502 на localhost
+                    // Disable proxy usage to avoid 502 responses from system proxies on localhost
                     UseProxy = false,
                     Proxy = null,
 
-                    // нормализуем таймауты и похендлим DNS/KeepAlive
+                    // Normalize timeouts and connection lifetime for stable DNS/KeepAlive behavior
                     PooledConnectionLifetime = TimeSpan.FromMinutes(5),
                     ConnectTimeout = TimeSpan.FromSeconds(5),
                     AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate,
@@ -42,14 +42,14 @@ namespace FfaasLite.SDK
                 _http = new HttpClient(handler)
                 {
                     Timeout = TimeSpan.FromSeconds(10),
-                    DefaultRequestVersion = HttpVersion.Version11, // форсим HTTP/1.1
+                    DefaultRequestVersion = HttpVersion.Version11, // Force HTTP/1.1 for SSE compatibility
                     DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower
                 };
             }
             else
             {
                 _http = http;
-                // на всякий случай тоже форсим
+                // Ensure supplied client keeps HTTP/1.1 defaults for SSE support
                 _http.DefaultRequestVersion = HttpVersion.Version11;
                 _http.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
             }

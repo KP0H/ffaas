@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using System.Net.Http;
 using System.Text.Json;
 using FfaasLite.Core.Flags;
@@ -13,7 +13,7 @@ namespace FfaasLite.Tests
         [Fact]
         public async Task EvaluateAsync_Uses_Server_When_Flag_Not_In_LocalCache()
         {
-            // Arrange: фальшивый HTTP, который вернёт EvalResult
+            // Arrange: stub HTTP handler that returns a serialized EvalResult
             var eval = new EvalResult("new-ui", true, FlagType.Boolean, "rule", DateTimeOffset.UtcNow);
 
             var handler = new MockHandler((req, ct) =>

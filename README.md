@@ -1,34 +1,140 @@
-# ffaas
-FFaaS-lite — Feature Flags as Code (MVP)
+# FFaaS Lite
+
+Feature Flags as Code - minimal infrastructure for shipping boolean, string, and number feature flags with attribute targeting.
 
 [![NuGet](https://img.shields.io/nuget/v/FfaasLite.SDK.svg)](https://www.nuget.org/packages/FfaasLite.SDK)
 [![GitHub package](https://img.shields.io/badge/packages-github-blue)](https://github.com/KP0H/ffaas/pkgs/nuget/FfaasLite.SDK)
 
+## Highlights
+- ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, SSE stream, basic audit log, and health check.
+- PostgreSQL (`jsonb`) persistence with Entity Framework Core migrations; Redis cache with simple invalidation strategy.
+- .NET SDK with local cache, SSE synchronization, helper extensions, and sample console client.
+- Dockerfile + docker-compose for local stack, GitHub Actions for CI, Docker image publishing, and NuGet trusted publishing.
+- Unit tests for the flag evaluator and SDK client behavior.
 
-Minimal service for Feature Flags with SDK for .NET:
-- **API**: ASP.NET Core 8
-- **Хранение**: PostgreSQL (`jsonb`)
-- **Кэш**: Redis
-- **Real-time**: SSE (Server-Sent Events) + WebSocket draft
-- **SDK (.NET)**: local cache, SSE-subscription (optional), `EvaluateAsync`
-- **Flags**: boolean / string / number + attributes targeting (`country`, `userId`, etc.)
-- **Audit**: `AuditEntry` with diffs (jsonb)
-- **SemVer**, CI, Docker
+> **Status:** MVP suitable for experimentation; security and observability hardening still pending. See `docs/roadmap.md` for upcoming work.
 
----
+## Architecture Overview
+```
+[Clients / SDK]
+      |
+      v
+   HTTP API (ASP.NET Core Minimal APIs)
+      |
+  +-----------+
+  | Postgres  |  <-- flags, rules, audit (jsonb)
+  | Redis     |  <-- cache for flags / evaluation
+  +-----------+
+```
 
-## Table of content
-- [Quick launch](#quick-launch)
-  - [In Docker (Linux/Windows/macOS)](#в-docker-linuxwindowsmacos)
-  - [Local: Windows](#local-windows)
-  - [Local: Linux/macOS](#local-linuxmacos)
-- [DB Migrations](#db-migrations)
-- [API](#api)
-- [SDK (.NET)](#sdk-net)
-- [Sample](#sample)
-- [Cache](#cache)
-- [Realtime](#realtime)
-- [CI/CD](#cicd)
-- [License](#license)
+The API exposes CRUD for feature flags, an `Evaluate` endpoint used by SDKs, and an SSE stream (`/api/stream`) that pushes flag updates to connected clients. A WebSocket endpoint (`/ws`) is scaffolded but not finalized.
 
----
+## Quick Start
+### Using Docker Compose
+1. Ensure Docker Desktop is running.
+2. Launch the stack (API + PostgreSQL + Redis):
+   ```powershell
+   docker compose up --build
+   ```
+3. The API listens on http://localhost:8080. Swagger UI: http://localhost:8080/swagger.
+4. PostgreSQL and Redis are exposed on the default ports (5432, 6379) for inspection.
+
+### Running the API Locally
+1. Install prerequisites: .NET 8 SDK, PostgreSQL 16+, Redis 7+.
+2. Set the connection strings in `appsettings.Development.json` or via environment variables (`ConnectionStrings__postgres`, `ConnectionStrings__redis`).
+3. Apply the initial migration:
+   ```powershell
+   dotnet ef database update -s src/FfaasLite.Api -p src/FfaasLite.Infrastructure
+   ```
+4. Run the API:
+   ```powershell
+   dotnet run --project src/FfaasLite.Api
+   ```
+
+### SDK Sample
+Run the console sample once the API is reachable:
+```powershell
+cd samples/FfaasLite.ConsoleSample
+dotnet run
+```
+
+## API Surface
+| Method | Path | Description |
+| ------ | ---- | ----------- |
+| GET    | `/health` | Health probe. |
+| GET    | `/api/flags` | List all flags (cached). |
+| GET    | `/api/flags/{key}` | Retrieve a single flag. |
+| POST   | `/api/flags` | Create a flag. |
+| PUT    | `/api/flags/{key}` | Update flag definition. |
+| DELETE | `/api/flags/{key}` | Delete flag (no auth yet). |
+| POST   | `/api/evaluate/{key}` | Evaluate against a context payload. |
+| GET    | `/api/audit` | Return recent audit entries. |
+| GET    | `/api/stream` | Server-Sent Events with live flag updates. |
+| GET    | `/ws` | WebSocket placeholder (no events yet). |
+
+### Example
+```powershell
+$context = @{ userId = "user-1"; attributes = @{ country = "NL" } } | ConvertTo-Json
+Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/evaluate/new-ui -Body $context -ContentType 'application/json'
+```
+
+## Data Model
+- `Flag`: `Key`, `Type` (`boolean|string|number`), default value, optional rules, `UpdatedAt`.
+- `TargetRule`: attribute name, operator (`eq`, `ne`, `contains`), comparison value, optional priority, override values.
+- `AuditEntry`: action (`create|update|delete`), `FlagKey`, `Actor` (defaults to `system`), diff snapshot.
+
+Rules are executed by ascending `Priority`. When priority is `null`, the rule is evaluated last. If no rule matches, the default flag value is used.
+
+## .NET SDK
+Install from NuGet:
+```powershell
+Install-Package FfaasLite.SDK
+```
+
+Usage:
+```csharp
+var client = new FlagClient("http://localhost:8080");
+await client.StartSseAsync();
+
+var context = new EvalContext(
+    UserId: "user-42",
+    Attributes: new() { ["country"] = "NL" }
+);
+
+var result = await client.EvaluateAsync("new-ui", context);
+if (result.AsBool() == true)
+{
+    // enable new experience
+}
+```
+
+SDK features:
+- HTTP evaluation with automatic JSON normalization.
+- Optional SSE subscription to keep the local cache in sync.
+- Helper extensions `AsBool`, `AsString`, and `AsNumber`.
+- Designed for dependency injection by supplying a configured `HttpClient`.
+
+See `src/FfaasLite.SDK/README.md` for additional details.
+
+## Development
+- Restore/build/test:
+  ```powershell
+  dotnet restore FfaasLite.sln
+  dotnet build FfaasLite.sln -c Release
+  dotnet test tests/FfaasLite.Tests/FfaasLite.Tests.csproj
+  ```
+- Coding standards: nullable enabled, treat warnings as errors in Release.
+- Integration tests are not yet present - consider contributing coverage for API + database.
+- Dockerfile publishes a self-contained runtime image (ASP.NET 8 base).
+
+## CI/CD
+- `ci.yml`: multi-platform build and test, test artifacts uploaded, Dockerfile lint via Hadolint.
+- `release-docker.yml`: builds and pushes multi-arch images to GHCR on `v*.*.*` tags.
+- `release-nuget.yml`: trusted publishing flow for the SDK using OIDC login.
+
+## Roadmap & Support
+- Planned improvements are tracked in `docs/roadmap.md`.
+- Questions, bugs, or feature requests: open an issue on GitHub.
+
+## License
+Licensed under the MIT License. See `LICENSE` for details.
