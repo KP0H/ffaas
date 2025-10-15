@@ -58,17 +58,71 @@ cd samples/FfaasLite.ConsoleSample
 dotnet run
 ```
 
+## Authentication
+Write operations now require an API key. Two roles are supported:
+
+- `Editor` - create/update/delete flags.
+- `Reader` - access read-only admin surfaces such as `/api/audit`.
+
+For local development, `appsettings.Development.json` seeds two keys:
+
+| Role   | Name           | Token              |
+| ------ | -------------- | ------------------ |
+| Reader | `local-reader` | `dev-reader-token` |
+| Editor | `local-editor` | `dev-editor-token` |
+
+Send the token with either header:
+
+```text
+Authorization: Bearer dev-editor-token
+```
+
+or
+
+```text
+X-Api-Key: dev-editor-token
+```
+
+To configure keys for other environments, add entries under `Auth.ApiKeys` or use environment variables, e.g.:
+
+```powershell
+$env:Auth__ApiKeys__0__Name = 'ci-editor'
+$env:Auth__ApiKeys__0__Key = '<generate-strong-token>'
+$env:Auth__ApiKeys__0__Roles__0 = 'Editor'
+```
+
+For production, prefer sourcing secrets from environment variables or secret stores. You can also avoid plaintext keys by providing a SHA-256 hash via the optional `Hash` property (hex or base64):
+
+```json
+"Auth": {
+  "ApiKeys": [
+    {
+      "Name": "ci-editor",
+      "Hash": "<sha256-hex-or-base64>",
+      "Roles": [ "Editor" ]
+    }
+  ]
+}
+```
+
+Invalid authentication attempts are logged (with remote IP metadata) for auditing.
+
+### Data Protection Keys
+The API persists ASP.NET Core Data Protection keys when `DataProtection__KeysDirectory` is set (docker-compose mounts `/var/ffaas/dataprotection`). For multi-instance or production deployments, mount a shared volume or configure a dedicated key ring (Azure Blob, S3, Redis) and optionally protect keys with an encryptor (Azure Key Vault, Windows DPAPI).
+
+Without a valid key, `POST`/`PUT`/`DELETE` requests return `401`/`403` and audit entries capture the authenticated actor name. Read-only endpoints remain publicly accessible by default.
+
 ## API Surface
 | Method | Path | Description |
 | ------ | ---- | ----------- |
 | GET    | `/health` | Health probe. |
 | GET    | `/api/flags` | List all flags (cached). |
 | GET    | `/api/flags/{key}` | Retrieve a single flag. |
-| POST   | `/api/flags` | Create a flag. |
-| PUT    | `/api/flags/{key}` | Update flag definition. |
-| DELETE | `/api/flags/{key}` | Delete flag (no auth yet). |
+| POST   | `/api/flags` | Create a flag (requires `Editor`). |
+| PUT    | `/api/flags/{key}` | Update flag definition (requires `Editor`). |
+| DELETE | `/api/flags/{key}` | Delete flag (requires `Editor`). |
 | POST   | `/api/evaluate/{key}` | Evaluate against a context payload. |
-| GET    | `/api/audit` | Return recent audit entries. |
+| GET    | `/api/audit` | Return recent audit entries (requires `Reader`). |
 | GET    | `/api/stream` | Server-Sent Events with live flag updates. |
 | GET    | `/ws` | WebSocket placeholder (no events yet). |
 
@@ -138,3 +192,8 @@ See `src/FfaasLite.SDK/README.md` for additional details.
 
 ## License
 Licensed under the MIT License. See `LICENSE` for details.
+
+
+
+
+

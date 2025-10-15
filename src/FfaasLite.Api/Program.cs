@@ -1,12 +1,15 @@
 using FfaasLite.Api.Contracts;
 using FfaasLite.Api.Helpers;
+using FfaasLite.Api.Security;
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using FfaasLite.Infrastructure.Cache;
 using FfaasLite.Infrastructure.Db;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using StackExchange.Redis;
+using System.IO;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -38,16 +41,46 @@ builder.Services.AddSingleton<RedisCache>();
 
 builder.Services.AddSingleton<IFlagEvaluator, FlagEvaluator>();
 
+var dataProtection = builder.Services.AddDataProtection();
+var dataProtectionKeysDir = cfg["DataProtection:KeysDirectory"];
+if (!string.IsNullOrWhiteSpace(dataProtectionKeysDir))
+{
+    Directory.CreateDirectory(dataProtectionKeysDir);
+    dataProtection.PersistKeysToFileSystem(new DirectoryInfo(dataProtectionKeysDir));
+}
+
+builder.Services.AddOptions<ApiKeyAuthenticationOptions>()
+    .Bind(cfg.GetSection("Auth"));
+builder.Services.AddOptions<ApiKeyAuthenticationOptions>(AuthConstants.Schemes.ApiKey)
+    .Bind(cfg.GetSection("Auth"));
+
+builder.Services.AddAuthentication(options =>
+{
+    options.DefaultAuthenticateScheme = AuthConstants.Schemes.ApiKey;
+    options.DefaultChallengeScheme = AuthConstants.Schemes.ApiKey;
+}).AddScheme<ApiKeyAuthenticationOptions, ApiKeyAuthenticationHandler>(AuthConstants.Schemes.ApiKey, _ => { });
+
+builder.Services.AddAuthorization(options =>
+{
+    options.AddPolicy(AuthConstants.Policies.Reader, policy =>
+        policy.RequireRole(AuthConstants.Roles.Reader, AuthConstants.Roles.Editor));
+    options.AddPolicy(AuthConstants.Policies.Editor, policy =>
+        policy.RequireRole(AuthConstants.Roles.Editor));
+});
+
 var app = builder.Build();
 
 app.UseSwagger();
 app.UseSwaggerUI();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 var sseClients = new List<HttpResponse>();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
-app.MapPost("/api/flags", async ([FromBody] FlagCreateDto dto, AppDbContext db, RedisCache cache) =>
+app.MapPost("/api/flags", async (HttpContext httpContext, [FromBody] FlagCreateDto dto, AppDbContext db, RedisCache cache) =>
 {
     var flag = new Flag
     {
@@ -59,14 +92,16 @@ app.MapPost("/api/flags", async ([FromBody] FlagCreateDto dto, AppDbContext db, 
         Rules = dto.Rules ?? new()
     };
 
+    var actor = ResolveActor(httpContext);
+
     db.Flags.Add(flag);
-    db.Audit.Add(new AuditEntry { Action = "create", FlagKey = flag.Key, DiffJson = new AuditDiff { Before = null, Updated = flag } });
+    db.Audit.Add(new AuditEntry { Action = "create", Actor = actor, FlagKey = flag.Key, DiffJson = new AuditDiff { Before = null, Updated = flag } });
     await db.SaveChangesAsync();
 
     await BroadcastChange(flag);
     await cache.RemoveAsync("flags:all");
     return Results.Created($"/api/flags/{flag.Key}", flag);
-});
+}).RequireAuthorization(AuthConstants.Policies.Editor);
 
 app.MapGet("/api/flags", async (AppDbContext db, RedisCache cache) =>
 {
@@ -93,7 +128,7 @@ app.MapGet("/api/flags/{key}", async (string key, AppDbContext db, RedisCache ca
     return Results.Ok(flag);
 });
 
-app.MapPut("/api/flags/{key}", async (string key, [FromBody] FlagUpdateDto dto, AppDbContext db, RedisCache cache) =>
+app.MapPut("/api/flags/{key}", async (HttpContext httpContext, string key, [FromBody] FlagUpdateDto dto, AppDbContext db, RedisCache cache) =>
 {
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
@@ -118,17 +153,17 @@ app.MapPut("/api/flags/{key}", async (string key, [FromBody] FlagUpdateDto dto, 
     existing.UpdatedAt = DateTimeOffset.UtcNow;
     await db.SaveChangesAsync();
 
-    db.Audit.Add(new AuditEntry { Action = "update", FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = existing } });
+    var actor = ResolveActor(httpContext);
+    db.Audit.Add(new AuditEntry { Action = "update", Actor = actor, FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = existing } });
     await db.SaveChangesAsync();
 
     await BroadcastChange(existing);
     await cache.RemoveAsync($"flag:{key}");
     await cache.RemoveAsync("flags:all");
     return Results.Ok(existing);
-});
+}).RequireAuthorization(AuthConstants.Policies.Editor);
 
-// TODO: Remove or check permissions somehow? 
-app.MapDelete("api/flags/{key}", async (string key, AppDbContext db) =>
+app.MapDelete("api/flags/{key}", async (HttpContext httpContext, string key, AppDbContext db) =>
 {
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
@@ -137,16 +172,18 @@ app.MapDelete("api/flags/{key}", async (string key, AppDbContext db) =>
     db.Flags.Remove(existing);
     await db.SaveChangesAsync();
 
-    db.Audit.Add(new AuditEntry { Action = "delete", FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = null } });
+    var actor = ResolveActor(httpContext);
+    db.Audit.Add(new AuditEntry { Action = "delete", Actor = actor, FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = null } });
     await db.SaveChangesAsync();
 
     var cache = app.Services.GetRequiredService<RedisCache>();
     await cache.RemoveAsync($"flag:{key}");
     await cache.RemoveAsync("flags:all");
     return Results.NoContent();
-});
+}).RequireAuthorization(AuthConstants.Policies.Editor);
 
-app.MapGet("/api/audit", async (AppDbContext db) => Results.Ok(await db.Audit.AsNoTracking().OrderByDescending(a => a.At).Take(100).ToListAsync()));
+app.MapGet("/api/audit", async (AppDbContext db) => Results.Ok(await db.Audit.AsNoTracking().OrderByDescending(a => a.At).Take(100).ToListAsync()))
+   .RequireAuthorization(AuthConstants.Policies.Reader);
 
 app.MapPost("/api/evaluate/{key}", async (
     [FromRoute] string key,
@@ -217,4 +254,12 @@ async Task BroadcastChange(Flag flag)
     }
 }
 
+string ResolveActor(HttpContext context)
+    => context.User?.Identity?.IsAuthenticated == true
+        ? context.User.Identity?.Name ?? "system"
+        : "system";
+
 app.Run();
+
+public partial class Program { }
+

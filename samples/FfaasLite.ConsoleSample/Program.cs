@@ -2,6 +2,7 @@
 using FfaasLite.SDK;
 
 var client = new FlagClient("http://localhost:8080");
+// Tip: for admin requests (POST/PUT/DELETE /api/flags) include an API key header such as "Authorization: Bearer dev-editor-token".
 
 var ctx = new EvalContext(
     UserId: "u3",
