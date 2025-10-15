@@ -1,6 +1,5 @@
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
-using System.Diagnostics.Metrics;
 
 namespace FfaasLite.Tests
 {
@@ -66,7 +65,7 @@ namespace FfaasLite.Tests
 
             var res = new FlagEvaluator().Evaluate(flag, ctx);
 
-            Assert.True((bool)res.Value!);  // сработало правило с приоритетом 1
+            Assert.True((bool)res.Value!);  // Priority 1 overrides the null-priority rule
             Assert.Equal("rule", res.Variant);
         }
 
