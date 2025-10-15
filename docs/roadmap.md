@@ -13,6 +13,7 @@
 - Implement optimistic concurrency (row version or `UpdatedAt` check) and improve cache invalidation to avoid stale reads after concurrent updates.
 - Finalize the WebSocket channel or remove the stub; align SSE payloads with typed change events (`created/updated/deleted`) and add heartbeat/auto-reconnect guidance.
 - Provide migration automation in Docker entrypoint and document rolling upgrade steps.
+- Externalize API keys/secrets to managed secret stores with rotation guidance and remove plaintext configuration.
 
 ### Developer & User Experience
 - Ship an admin UI (or minimal CLI) for managing flags and viewing audits instead of manual API calls.
@@ -25,6 +26,7 @@
 - Create integration tests that spin up PostgreSQL/Redis (can reuse docker-compose) and smoke-test critical endpoints.
 - Configure automated dependency scanning and license compliance (e.g., GitHub Dependabot, OSS Review Toolkit report).
 - Publish API reference (Swagger export) and SDK API docs (DocFX or XML docs surfaced on learn.microsoft.com).
+- Capture authentication failure metrics/log enrichment and expose alerts for suspicious activity.
 
 ## Backlog & Stretch Ideas
 - Multi-environment support (dev/stage/prod) with flag promotion flows.
@@ -37,6 +39,7 @@
 - Initial MVP shipped: CRUD API, evaluation engine, Redis cache, SSE broadcast, .NET SDK, CI, and release automation.
 - Sample console app added to demonstrate SDK usage.
 - First EF Core migration created and validated against PostgreSQL 16.
+- API authentication added with role-based API keys and audit actor attribution.
 
 ## Contributing
 1. Discuss ideas via GitHub issues before large changes; include use-case and acceptance criteria.
