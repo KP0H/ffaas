@@ -14,6 +14,7 @@
 - Finalize the WebSocket channel or remove the stub; align SSE payloads with typed change events (`created/updated/deleted`) and add heartbeat/auto-reconnect guidance.
 - Provide migration automation in Docker entrypoint and document rolling upgrade steps.
 - Externalize API keys/secrets to managed secret stores with rotation guidance and remove plaintext configuration.
+- Publish ETag headers for flag resources so clients can rely on `If-Match` instead of custom timestamps.
 
 ### Developer & User Experience
 - Ship an admin UI (or minimal CLI) for managing flags and viewing audits instead of manual API calls.

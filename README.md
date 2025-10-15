@@ -110,6 +110,23 @@ Invalid authentication attempts are logged (with remote IP metadata) for auditin
 ### Data Protection Keys
 The API persists ASP.NET Core Data Protection keys when `DataProtection__KeysDirectory` is set (docker-compose mounts `/var/ffaas/dataprotection`). For multi-instance or production deployments, mount a shared volume or configure a dedicated key ring (Azure Blob, S3, Redis) and optionally protect keys with an encryptor (Azure Key Vault, Windows DPAPI).
 
+> **Note:** During local development you will see `No XML encryptor configured` warnings because keys are stored in plaintext on the mounted volume. This is expected for dev environments; configure an encryptor (e.g., Azure Key Vault) or store keys on encrypted media before going to production.
+
+### Updating Flags Safely
+Clients must provide the `lastKnownUpdatedAt` value they received from a previous GET/POST when issuing a PUT. The server compares this timestamp and returns **409 Conflict** if another update wins the race. Example:
+
+```powershell
+$flag = Invoke-RestMethod -Method Get -Uri http://localhost:8080/api/flags/new-ui
+$body = @{
+  type = 'boolean'
+  boolValue = $true
+  lastKnownUpdatedAt = $flag.updatedAt
+} | ConvertTo-Json
+Invoke-RestMethod -Method Put -Uri http://localhost:8080/api/flags/new-ui -Body $body -ContentType 'application/json'
+```
+
+Handle `409` responses by refreshing the flag and retrying with the latest `updatedAt` stamp.
+
 Without a valid key, `POST`/`PUT`/`DELETE` requests return `401`/`403` and audit entries capture the authenticated actor name. Read-only endpoints remain publicly accessible by default.
 
 ## API Surface
@@ -119,7 +136,7 @@ Without a valid key, `POST`/`PUT`/`DELETE` requests return `401`/`403` and audit
 | GET    | `/api/flags` | List all flags (cached). |
 | GET    | `/api/flags/{key}` | Retrieve a single flag. |
 | POST   | `/api/flags` | Create a flag (requires `Editor`). |
-| PUT    | `/api/flags/{key}` | Update flag definition (requires `Editor`). |
+| PUT    | `/api/flags/{key}` | Update flag definition (requires `Editor`, include `lastKnownUpdatedAt`). |
 | DELETE | `/api/flags/{key}` | Delete flag (requires `Editor`). |
 | POST   | `/api/evaluate/{key}` | Evaluate against a context payload. |
 | GET    | `/api/audit` | Return recent audit entries (requires `Reader`). |
@@ -192,6 +209,12 @@ See `src/FfaasLite.SDK/README.md` for additional details.
 
 ## License
 Licensed under the MIT License. See `LICENSE` for details.
+
+
+
+
+
+
 
 
 

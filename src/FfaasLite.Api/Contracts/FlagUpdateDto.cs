@@ -1,4 +1,4 @@
-﻿using FfaasLite.Core.Models;
+using FfaasLite.Core.Models;
 
 namespace FfaasLite.Api.Contracts
 {
@@ -7,6 +7,7 @@ namespace FfaasLite.Api.Contracts
         bool? BoolValue = null,
         string? StringValue = null,
         double? NumberValue = null,
-        List<TargetRule>? Rules = null
+        List<TargetRule>? Rules = null,
+        DateTimeOffset? LastKnownUpdatedAt = null
     );
 }
