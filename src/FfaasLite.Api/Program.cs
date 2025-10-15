@@ -133,6 +133,24 @@ app.MapPut("/api/flags/{key}", async (HttpContext httpContext, string key, [From
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
 
+    if (dto.LastKnownUpdatedAt is null)
+    {
+        return Results.BadRequest(new
+        {
+            error = "lastKnownUpdatedAt is required to update a flag.",
+            currentUpdatedAt = existing.UpdatedAt
+        });
+    }
+
+    if (existing.UpdatedAt != dto.LastKnownUpdatedAt.Value)
+    {
+        return Results.Conflict(new
+        {
+            error = "Flag has been modified by another request. Refresh and retry.",
+            currentUpdatedAt = existing.UpdatedAt
+        });
+    }
+
     var beforeObj = new Flag
     {
         Id = existing.Id,
@@ -161,7 +179,11 @@ app.MapPut("/api/flags/{key}", async (HttpContext httpContext, string key, [From
     await cache.RemoveAsync($"flag:{key}");
     await cache.RemoveAsync("flags:all");
     return Results.Ok(existing);
-}).RequireAuthorization(AuthConstants.Policies.Editor);
+}).RequireAuthorization(AuthConstants.Policies.Editor)
+  .Produces<Flag>(StatusCodes.Status200OK)
+  .Produces(StatusCodes.Status400BadRequest)
+  .Produces(StatusCodes.Status404NotFound)
+  .Produces(StatusCodes.Status409Conflict);
 
 app.MapDelete("api/flags/{key}", async (HttpContext httpContext, string key, AppDbContext db) =>
 {

@@ -12,14 +12,8 @@ using FfaasLite.Api.Security;
 using FfaasLite.Core.Models;
 using FfaasLite.Infrastructure.Db;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
-using NSubstitute;
-using StackExchange.Redis;
 
 namespace FfaasLite.Tests.Api;
 
@@ -28,7 +22,7 @@ public class ApiAuthTests
     [Fact]
     public async Task PostFlags_WithoutApiKey_Returns401()
     {
-        using var factory = new ApiFactory();
+        using var factory = new TestApiFactory();
         using var client = factory.CreateClient();
         await factory.ResetStateAsync();
 
@@ -40,7 +34,7 @@ public class ApiAuthTests
     [Fact]
     public async Task PostFlags_WithReaderKey_Returns403()
     {
-        using var factory = new ApiFactory();
+        using var factory = new TestApiFactory();
         using var client = factory.CreateClient();
         await factory.ResetStateAsync();
 
@@ -57,7 +51,7 @@ public class ApiAuthTests
     [Fact]
     public async Task PostFlags_WithEditorKey_Returns201()
     {
-        using var factory = new ApiFactory();
+        using var factory = new TestApiFactory();
         using var client = factory.CreateClient();
         await factory.ResetStateAsync();
 
@@ -72,7 +66,7 @@ public class ApiAuthTests
     public async Task PostFlags_WithHashedKey_Returns201()
     {
         var hashedKey = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes("hashed-editor-token")));
-        using var factory = new ApiFactory(services =>
+        using var factory = new TestApiFactory(services =>
         {
             services.PostConfigure<ApiKeyAuthenticationOptions>(options =>
             {
@@ -107,88 +101,6 @@ public class ApiAuthTests
     private static FlagCreateDto CreateFlagPayload(string key) => new(key, FlagType.Boolean, BoolValue: true);
 }
 
-internal class ApiFactory : WebApplicationFactory<Program>
-{
-    private readonly Action<IServiceCollection>? _configureServices;
-    private readonly Action<IConfigurationBuilder>? _configureConfiguration;
 
-    public ApiFactory(
-        Action<IServiceCollection>? configureServices = null,
-        Action<IConfigurationBuilder>? configureConfiguration = null)
-    {
-        _configureServices = configureServices;
-        _configureConfiguration = configureConfiguration;
-    }
 
-    protected override void ConfigureWebHost(IWebHostBuilder builder)
-    {
-        builder.UseEnvironment("Development");
-
-        if (_configureConfiguration is not null)
-        {
-            builder.ConfigureAppConfiguration((_, configurationBuilder) =>
-            {
-                _configureConfiguration(configurationBuilder);
-            });
-        }
-
-        builder.ConfigureServices(services =>
-        {
-            services.RemoveAll(typeof(DbContextOptions<AppDbContext>));
-            services.RemoveAll(typeof(AppDbContext));
-            services.AddDbContext<AppDbContext>(opt => opt.UseInMemoryDatabase($"auth-tests-{Guid.NewGuid()}"));
-
-            services.RemoveAll(typeof(IConnectionMultiplexer));
-            var database = Substitute.For<IDatabase>();
-            database.StringSetAsync(
-                    Arg.Any<RedisKey>(),
-                    Arg.Any<RedisValue>(),
-                    Arg.Any<TimeSpan?>(),
-                    Arg.Any<When>(),
-                    Arg.Any<CommandFlags>())
-                .Returns(Task.FromResult(true));
-            database.StringGetAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-                .Returns(Task.FromResult(RedisValue.Null));
-            database.KeyDeleteAsync(Arg.Any<RedisKey>(), Arg.Any<CommandFlags>())
-                .Returns(Task.FromResult(true));
-
-            var multiplexer = Substitute.For<IConnectionMultiplexer>();
-            multiplexer.GetDatabase(Arg.Any<int>(), Arg.Any<object>())
-                .Returns(database);
-            services.AddSingleton(multiplexer);
-
-            void SeedKeys(ApiKeyAuthenticationOptions options)
-            {
-                if (!options.ApiKeys.Any())
-                {
-                    options.ApiKeys.Add(new ApiKeyCredential
-                    {
-                        Name = "test-reader",
-                        Key = "dev-reader-token",
-                        Roles = new[] { AuthConstants.Roles.Reader }
-                    });
-                    options.ApiKeys.Add(new ApiKeyCredential
-                    {
-                        Name = "test-editor",
-                        Key = "dev-editor-token",
-                        Roles = new[] { AuthConstants.Roles.Editor }
-                    });
-                }
-            }
-
-            services.PostConfigure<ApiKeyAuthenticationOptions>(options => SeedKeys(options));
-            services.PostConfigure<ApiKeyAuthenticationOptions>(AuthConstants.Schemes.ApiKey, options => SeedKeys(options));
-
-            _configureServices?.Invoke(services);
-        });
-    }
-
-    public async Task ResetStateAsync()
-    {
-        using var scope = Services.CreateScope();
-        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-        await db.Database.EnsureDeletedAsync();
-        await db.Database.EnsureCreatedAsync();
-    }
-}
 
