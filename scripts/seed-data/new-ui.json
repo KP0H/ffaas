@@ -1,0 +1,24 @@
+[
+  {
+    "attribute": "segments",
+    "operator": "segment",
+    "value": "beta,internal",
+    "priority": 10,
+    "boolOverride": true
+  },
+  {
+    "attribute": "country",
+    "operator": "eq",
+    "value": "NL",
+    "priority": 20,
+    "boolOverride": true
+  },
+  {
+    "attribute": "userId",
+    "operator": "percentage",
+    "value": "new-ui-rollout",
+    "percentage": 30,
+    "priority": 30,
+    "boolOverride": true
+  }
+]

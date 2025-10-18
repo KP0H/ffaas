@@ -30,4 +30,10 @@ else
 {
     Console.WriteLine("Using old UI");
 }
+
+var rateLimit = await client.EvaluateAsync("rate-limit", ctx);
+Console.WriteLine($"Flag '{rateLimit.Key}' evaluated:");
+Console.WriteLine($"  Value   : {rateLimit.Value}");
+Console.WriteLine($"  Variant : {rateLimit.Variant}");
+Console.WriteLine($"  Type    : {rateLimit.Type}");
 Console.ReadKey();

@@ -55,13 +55,35 @@ The API exposes CRUD for feature flags, an `Evaluate` endpoint used by SDKs, and
    dotnet run --project src/FfaasLite.Api
    ```
 
+### Seed Demo Data
+With the API running, populate the demo flags that power the samples and documentation:
+
+- **PowerShell**
+  ```powershell
+  pwsh ./scripts/seed-demo.ps1
+  # optional overrides
+  pwsh ./scripts/seed-demo.ps1 -BaseUrl http://localhost:8080 -ApiKey dev-editor-token
+  ```
+- **Bash**
+  ```bash
+  ./scripts/seed-demo.sh
+  # optional overrides
+  ./scripts/seed-demo.sh https://my-api.example.com my-editor-token
+  ```
+
+The script idempotently upserts a demo catalog:
+- `new-ui` (boolean) showcasing segment and percentage rollouts.
+- `checkout` (boolean) combining geo, segment, and gradual rollout rules.
+- `ui-ver` (string) with country and email-based overrides.
+- `rate-limit` (number) with segment and version-aware adjustments.
+
 ### SDK Samples
-- **Console** – quick evaluation walk-through once the API is reachable:
+- **Console** - quick evaluation walk-through once the API is reachable:
   ```powershell
   cd samples/FfaasLite.ConsoleSample
   dotnet run
   ```
-- **Worker** – demonstrates hosting `FlagClient` inside a background service with realtime streaming, typed helpers, and background refresh:
+- **Worker** - demonstrates hosting `FlagClient` inside a background service with realtime streaming, typed helpers, and background refresh:
   ```powershell
   cd samples/FfaasLite.WorkerSample
   dotnet run

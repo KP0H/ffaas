@@ -40,13 +40,20 @@ public sealed class FlagClientWorker : BackgroundService
             try
             {
                 var context = BuildEvalContext(settings);
-                var result = await _client.EvaluateAsync(settings.SampleFlagKey, context, stoppingToken);
+                var checkout = await _client.EvaluateAsync(settings.SampleFlagKey, context, stoppingToken);
                 _logger.LogInformation(
                     "Flag {Key} => {Value} (variant {Variant}, as of {AsOf})",
-                    result.Key,
-                    result.Value ?? "<null>",
-                    result.Variant,
-                    result.AsOf);
+                    checkout.Key,
+                    checkout.Value ?? "<null>",
+                    checkout.Variant,
+                    checkout.AsOf);
+
+                var rateLimit = await _client.EvaluateAsync("rate-limit", context, stoppingToken);
+                _logger.LogInformation(
+                    "Rate limit => {Value} (variant {Variant}, as of {AsOf})",
+                    rateLimit.Value ?? "<null>",
+                    rateLimit.Variant,
+                    rateLimit.AsOf);
             }
             catch (OperationCanceledException) when (stoppingToken.IsCancellationRequested)
             {
@@ -163,7 +170,8 @@ public sealed class FlagClientSettings
     public Dictionary<string, string> Attributes { get; set; } = new(StringComparer.OrdinalIgnoreCase)
     {
         ["country"] = "US",
-        ["appVersion"] = "1.0.0"
+        ["appVersion"] = "1.0.0",
+        ["segments"] = "vip"
     };
     public string[]? TypedHelperKeys { get; set; }
 }
