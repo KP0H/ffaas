@@ -211,6 +211,75 @@ namespace FfaasLite.Tests
             Assert.NotEmpty(captured);
         }
 
+        [Fact]
+        public async Task RequestTimeout_CancelsLongRunningCall()
+        {
+            var handler = new MockHandler(async (req, ct) =>
+            {
+                if (req.Method == HttpMethod.Get && req.RequestUri!.AbsolutePath.Equals("/api/flags", StringComparison.OrdinalIgnoreCase))
+                {
+                    await Task.Delay(Timeout.InfiniteTimeSpan, ct);
+                }
+
+                return new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("[]")
+                };
+            });
+
+            var options = new FlagClientOptions
+            {
+                BaseUrl = "http://localhost",
+                HttpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+                BootstrapOnStartup = false,
+                StartRealtimeStream = false,
+                RequestTimeout = TimeSpan.FromMilliseconds(50)
+            };
+
+            await using var client = await FlagClient.CreateAsync(options);
+
+            await Assert.ThrowsAsync<TaskCanceledException>(() => client.RefreshSnapshotAsync());
+        }
+
+        [Fact]
+        public async Task SendAsyncWrapper_Is_Invoked()
+        {
+            var handler = new MockHandler((req, ct) =>
+            {
+                if (req.RequestUri!.AbsolutePath.Equals("/api/flags", StringComparison.OrdinalIgnoreCase))
+                {
+                    var json = JsonSerializer.Serialize(Array.Empty<Flag>(), new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                    var response = new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(json)
+                    };
+                    response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    return Task.FromResult(response);
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            });
+
+            var counter = 0;
+            var options = new FlagClientOptions
+            {
+                BaseUrl = "http://localhost",
+                HttpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+                BootstrapOnStartup = false,
+                StartRealtimeStream = false,
+                SendAsyncWrapper = async (next, request, completion, token) =>
+                {
+                    Interlocked.Increment(ref counter);
+                    return await next(request, completion, token);
+                }
+            };
+
+            await using var client = await FlagClient.CreateAsync(options);
+            await client.RefreshSnapshotAsync();
+
+            Assert.True(counter > 0);
+        }
+
         internal sealed class MockHandler : HttpMessageHandler
         {
             private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _handler;

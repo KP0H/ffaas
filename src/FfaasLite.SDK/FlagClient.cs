@@ -27,6 +27,8 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
     private readonly JsonSerializerOptions _json;
     private readonly ConcurrentDictionary<string, Flag> _flags = new(StringComparer.Ordinal);
     private readonly SemaphoreSlim _cacheLock = new(1, 1);
+    private readonly TimeSpan? _requestTimeout;
+    private readonly Func<HttpRequestMessage, HttpCompletionOption, CancellationToken, Task<HttpResponseMessage>> _sendAsync;
 
     private CancellationTokenSource? _streamCts;
     private Task? _streamTask;
@@ -50,7 +52,7 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
             options.HttpClient.BaseAddress = new Uri(options.BaseUrl);
         }
 
-        var client = new FlagClient(options.BaseUrl, options.HttpClient);
+        var client = new FlagClient(options.BaseUrl, options.HttpClient, options.RequestTimeout, options.SendAsyncWrapper);
         client._backgroundRefreshErrorHandler = options.OnBackgroundRefreshError;
 
         if (!string.IsNullOrEmpty(options.ApiKey))
@@ -82,7 +84,11 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
         return client;
     }
 
-    public FlagClient(string baseUrl, HttpClient? http = null)
+    public FlagClient(
+        string baseUrl,
+        HttpClient? http = null,
+        TimeSpan? requestTimeout = null,
+        Func<Func<HttpRequestMessage, HttpCompletionOption, CancellationToken, Task<HttpResponseMessage>>, HttpRequestMessage, HttpCompletionOption, CancellationToken, Task<HttpResponseMessage>>? sendAsyncWrapper = null)
     {
         _baseUrl = baseUrl.TrimEnd('/');
 
@@ -119,6 +125,34 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
             _http.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionOrLower;
             _ownsHttpClient = false;
         }
+
+        _requestTimeout = requestTimeout > TimeSpan.Zero ? requestTimeout : null;
+        _sendAsync = sendAsyncWrapper is null
+            ? DefaultSendAsync
+            : (request, completion, token) => sendAsyncWrapper(DefaultSendAsync, request, completion, token);
+    }
+
+    private Task<HttpResponseMessage> DefaultSendAsync(HttpRequestMessage request, HttpCompletionOption completion, CancellationToken token)
+        => _http.SendAsync(request, completion, token);
+
+    private async Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, HttpCompletionOption completion, CancellationToken ct)
+    {
+        CancellationTokenSource? timeoutCts = null;
+        if (_requestTimeout.HasValue && _requestTimeout > TimeSpan.Zero)
+        {
+            timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+            timeoutCts.CancelAfter(_requestTimeout.Value);
+            ct = timeoutCts.Token;
+        }
+
+        try
+        {
+            return await _sendAsync(request, completion, ct).ConfigureAwait(false);
+        }
+        finally
+        {
+            timeoutCts?.Dispose();
+        }
     }
 
     public IReadOnlyDictionary<string, Flag> SnapshotCachedFlags()
@@ -134,8 +168,12 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
             return Evaluator.Evaluate(cached, ctx);
         }
 
-        var url = $"{_baseUrl}/api/evaluate/{Uri.EscapeDataString(key)}";
-        using var resp = await _http.PostAsJsonAsync(url, ctx, _json, ct).ConfigureAwait(false);
+        using var request = new HttpRequestMessage(HttpMethod.Post, $"{_baseUrl}/api/evaluate/{Uri.EscapeDataString(key)}")
+        {
+            Content = JsonContent.Create(ctx, options: _json)
+        };
+
+        using var resp = await SendAsync(request, HttpCompletionOption.ResponseContentRead, ct).ConfigureAwait(false);
         resp.EnsureSuccessStatusCode();
 
         var result = await resp.Content.ReadFromJsonAsync<EvalResult>(_json, ct).ConfigureAwait(false)
@@ -146,7 +184,11 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
 
     public async Task RefreshSnapshotAsync(CancellationToken ct = default)
     {
-        var flags = await _http.GetFromJsonAsync<List<Flag>>($"{_baseUrl}/api/flags", _json, ct).ConfigureAwait(false);
+        using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/api/flags");
+        using var response = await SendAsync(request, HttpCompletionOption.ResponseContentRead, ct).ConfigureAwait(false);
+        response.EnsureSuccessStatusCode();
+
+        var flags = await response.Content.ReadFromJsonAsync<List<Flag>>(_json, ct).ConfigureAwait(false);
         if (flags is null)
         {
             return;
@@ -315,14 +357,14 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
 
             try
             {
-                var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/api/stream");
+                using var request = new HttpRequestMessage(HttpMethod.Get, $"{_baseUrl}/api/stream");
                 request.Headers.Accept.ParseAdd("text/event-stream");
                 if (_lastVersion > 0)
                 {
                     request.Headers.TryAddWithoutValidation("Last-Event-ID", _lastVersion.ToString(CultureInfo.InvariantCulture));
                 }
 
-                response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
+                response = await SendAsync(request, HttpCompletionOption.ResponseHeadersRead, token).ConfigureAwait(false);
                 response.EnsureSuccessStatusCode();
                 stream = await response.Content.ReadAsStreamAsync(token).ConfigureAwait(false);
 

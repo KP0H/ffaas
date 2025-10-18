@@ -1,5 +1,7 @@
 using System;
 using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
 
 namespace FfaasLite.SDK;
 
@@ -22,6 +24,10 @@ public sealed class FlagClientOptions
     public Action<HttpClient>? ConfigureHttpClient { get; set; }
 
     public Action<Exception>? OnBackgroundRefreshError { get; set; }
+
+    public TimeSpan? RequestTimeout { get; set; }
+
+    public Func<Func<HttpRequestMessage, HttpCompletionOption, CancellationToken, Task<HttpResponseMessage>>, HttpRequestMessage, HttpCompletionOption, CancellationToken, Task<HttpResponseMessage>>? SendAsyncWrapper { get; set; }
 }
 
 public sealed class BackgroundRefreshOptions
