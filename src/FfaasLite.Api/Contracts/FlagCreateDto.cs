@@ -1,4 +1,4 @@
-﻿using FfaasLite.Core.Models;
+using FfaasLite.Core.Models;
 
 namespace FfaasLite.Api.Contracts
 {

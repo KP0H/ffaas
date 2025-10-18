@@ -1,4 +1,4 @@
-﻿using FfaasLite.Core.Flags;
+using FfaasLite.Core.Flags;
 using FfaasLite.SDK;
 
 var client = new FlagClient("http://localhost:8080");

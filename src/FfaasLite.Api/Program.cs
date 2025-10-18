@@ -1,15 +1,3 @@
-using FfaasLite.Api.Contracts;
-using FfaasLite.Api.Helpers;
-using FfaasLite.Api.Security;
-using FfaasLite.Api.Realtime;
-using FfaasLite.Core.Flags;
-using FfaasLite.Core.Models;
-using FfaasLite.Infrastructure.Cache;
-using FfaasLite.Infrastructure.Db;
-using Microsoft.AspNetCore.DataProtection;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using StackExchange.Redis;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Globalization;
@@ -20,6 +8,21 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
+
+using FfaasLite.Api.Contracts;
+using FfaasLite.Api.Helpers;
+using FfaasLite.Api.Realtime;
+using FfaasLite.Api.Security;
+using FfaasLite.Core.Flags;
+using FfaasLite.Core.Models;
+using FfaasLite.Infrastructure.Cache;
+using FfaasLite.Infrastructure.Db;
+
+using Microsoft.AspNetCore.DataProtection;
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
+
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 var cfg = builder.Configuration;

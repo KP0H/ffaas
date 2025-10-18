@@ -1,6 +1,7 @@
+using System.Collections.Generic;
+
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
-using System.Collections.Generic;
 
 namespace FfaasLite.SDK;
 
