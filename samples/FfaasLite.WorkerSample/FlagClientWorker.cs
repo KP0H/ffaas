@@ -1,7 +1,9 @@
+using System.Linq;
+
 using FfaasLite.Core.Flags;
 using FfaasLite.SDK;
+
 using Microsoft.Extensions.Options;
-using System.Linq;
 
 namespace FfaasLite.WorkerSample;
 

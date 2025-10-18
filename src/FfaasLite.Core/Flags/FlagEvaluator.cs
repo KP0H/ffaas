@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.RegularExpressions;
+
 using FfaasLite.Core.Models;
 
 namespace FfaasLite.Core.Flags

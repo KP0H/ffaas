@@ -6,9 +6,11 @@ using System.Net.Http.Headers;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using FfaasLite.SDK;
+
 using Xunit;
 
 namespace FfaasLite.Tests
