@@ -2,6 +2,7 @@ using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.IO;
 using FfaasLite.AdminCli;
 using FfaasLite.Core.Models;
 using Xunit;
@@ -176,6 +177,71 @@ public class AdminAppTests
         var output = stdout.ToString();
         Assert.Contains("flag-0", output);
         Assert.DoesNotContain("flag-5", output);
+    }
+
+    [Fact]
+    public async Task FlagsUpsert_AppliesRulesFile_WithAdvancedFields()
+    {
+        var rules = """
+        [
+          {
+            "attribute": "userId",
+            "operator": "percentage",
+            "value": "gradual",
+            "percentage": 37.5,
+            "percentageAttribute": "sessionId",
+            "segmentDelimiter": "|"
+          }
+        ]
+        """;
+
+        var tempPath = Path.GetTempFileName();
+        await File.WriteAllTextAsync(tempPath, rules);
+
+        try
+        {
+            var existing = new FlagRecord
+            {
+                Key = "advanced",
+                Type = FlagType.Boolean,
+                BoolValue = false,
+                UpdatedAt = DateTimeOffset.Parse("2024-01-01T00:00:00Z")
+            };
+
+            var handler = new StubHttpMessageHandler(req =>
+            {
+                if (req.Method == HttpMethod.Get)
+                {
+                    return Response(HttpStatusCode.OK, existing);
+                }
+
+                Assert.Equal(HttpMethod.Put, req.Method);
+                var payload = req.Content!.ReadAsStringAsync().Result;
+                var dto = JsonSerializer.Deserialize<FlagUpdateDto>(payload, Json);
+                Assert.NotNull(dto.Rules);
+                var rule = Assert.Single(dto!.Rules!);
+                Assert.Equal(37.5, rule.Percentage);
+                Assert.Equal("sessionId", rule.PercentageAttribute);
+                Assert.Equal("|", rule.SegmentDelimiter);
+                Assert.Equal("gradual", rule.Value);
+
+                return new HttpResponseMessage(HttpStatusCode.OK);
+            });
+
+            var stdout = new StringWriter();
+            var stderr = new StringWriter();
+            var args = new[] { "--api-key", "tok", "flags", "upsert", "advanced", "--rules", tempPath };
+            var client = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+
+            var exit = await AdminApp.RunAsync(args, stdout, stderr, client);
+
+            Assert.Equal(0, exit);
+            Assert.Contains("Updated flag 'advanced'.", stdout.ToString());
+        }
+        finally
+        {
+            File.Delete(tempPath);
+        }
     }
 
     private static HttpResponseMessage Response<T>(HttpStatusCode statusCode, T payload)
