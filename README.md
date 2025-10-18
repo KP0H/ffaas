@@ -6,7 +6,7 @@ Feature Flags as Code - minimal infrastructure for shipping boolean, string, and
 [![GitHub package](https://img.shields.io/badge/packages-github-blue)](https://github.com/KP0H/ffaas/pkgs/nuget/FfaasLite.SDK)
 
 ## Highlights
-- ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, structured SSE stream (heartbeats + retries), basic audit log, and health check.
+- ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, structured SSE stream (heartbeats + retries), basic audit log, automatic EF Core migrations, and health check.
 - PostgreSQL (`jsonb`) persistence with Entity Framework Core migrations; Redis cache with simple invalidation strategy.
 - .NET SDK with local cache, realtime SSE synchronisation (backoff/heartbeats), helper extensions, and sample console client.
 - Dockerfile + docker-compose for local stack, GitHub Actions for CI, Docker image publishing, and NuGet trusted publishing.
@@ -153,6 +153,12 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/evaluate/new-ui -B
 - Each message arrives as `event: flag-change` with an incrementing `id` and JSON payload `{ "type": "created|updated|deleted", "version": long, "payload": { "key": "...", "flag": { ... } } }`.
 - Heartbeats (`event: heartbeat`) ship every 15 seconds; the stream also emits `retry: 5000` hints that clients can honour when reconnecting.
 - WebSocket consumers should migrate to SSE; the server now returns 410 for `/ws`.
+
+## Database Migrations
+- The API runs `DbContext.Database.MigrateAsync()` on startup (or `EnsureCreatedAsync` for in-memory tests) via `DatabaseMigrationHostedService`.
+- Control behaviour with configuration: set `Database:Migrations:Skip=true` or the environment variable `FFAAAS_SKIP_MIGRATIONS=true` to disable automation.
+- Adjust retry behaviour through `Database:Migrations:MaxRetryCount` (default 5) and `Database:Migrations:RetryDelaySeconds` (default 5).
+- See `docs/operations/upgrade-playbook.md` for rolling upgrade and rollback guidance.
 
 ## Data Model
 - `Flag`: `Key`, `Type` (`boolean|string|number`), default value, optional rules, `UpdatedAt`.

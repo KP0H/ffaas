@@ -11,6 +11,7 @@ using System.Threading.Tasks;
 
 using FfaasLite.Api.Contracts;
 using FfaasLite.Api.Helpers;
+using FfaasLite.Api.Infrastructure;
 using FfaasLite.Api.Realtime;
 using FfaasLite.Api.Security;
 using FfaasLite.Core.Flags;
@@ -50,6 +51,9 @@ builder.Services.AddSingleton<IConnectionMultiplexer>(_ =>
 builder.Services.AddSingleton<RedisCache>();
 
 builder.Services.AddSingleton<IFlagEvaluator, FlagEvaluator>();
+builder.Services.Configure<DatabaseMigrationOptions>(cfg.GetSection("Database:Migrations"));
+builder.Services.AddSingleton<IDatabaseInitializer, DatabaseInitializer>();
+builder.Services.AddHostedService<DatabaseMigrationHostedService>();
 
 var dataProtection = builder.Services.AddDataProtection();
 var dataProtectionKeysDir = cfg["DataProtection:KeysDirectory"];
