@@ -46,6 +46,60 @@ namespace FfaasLite.Tests
             Assert.Equal(FlagType.Boolean, res.Type);
         }
 
+        [Fact]
+        public async Task RefreshSnapshotAsync_Preserves_Advanced_Targeting_Fields()
+        {
+            var flags = new[]
+            {
+                new Flag
+                {
+                    Key = "advanced",
+                    Type = FlagType.Boolean,
+                    BoolValue = false,
+                    Rules =
+                    [
+                        new TargetRule(
+                            Attribute: "userId",
+                            Operator: "percentage",
+                            Value: "gradual",
+                            Priority: 10,
+                            BoolOverride: true,
+                            Percentage: 42.5,
+                            PercentageAttribute: "sessionId",
+                            SegmentDelimiter: "|")
+                    ]
+                }
+            };
+
+            var handler = new MockHandler((req, ct) =>
+            {
+                if (req.Method == HttpMethod.Get && req.RequestUri!.AbsolutePath.Equals("/api/flags", StringComparison.OrdinalIgnoreCase))
+                {
+                    var response = new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(JsonSerializer.Serialize(flags, new JsonSerializerOptions(JsonSerializerDefaults.Web)))
+                    };
+                    response.Content.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("application/json");
+                    return Task.FromResult(response);
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            });
+
+            var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+            await using var client = new FlagClient("http://localhost", http);
+
+            await client.RefreshSnapshotAsync();
+
+            Assert.True(client.TryGetCachedFlag("advanced", out var cached));
+            Assert.NotNull(cached);
+            var rule = Assert.Single(cached!.Rules);
+            Assert.Equal("percentage", rule.Operator);
+            Assert.Equal(42.5, rule.Percentage);
+            Assert.Equal("sessionId", rule.PercentageAttribute);
+            Assert.Equal("|", rule.SegmentDelimiter);
+        }
+
         internal sealed class MockHandler : HttpMessageHandler
         {
             private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _handler;

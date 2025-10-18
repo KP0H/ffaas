@@ -145,4 +145,24 @@ Hashing is stable: the same user and salt produce the same bucket across evaluat
 - Combine `segment` and `percentage` rules to seed early adopters while rolling out to the wider population.
 - When using regex, keep patterns simple and fast; extremely complex expressions may time out (250 ms limit per evaluation).
 
+## Updating via Admin CLI
+
+```powershell
+@'
+[
+  {
+    "attribute": "userId",
+    "operator": "percentage",
+    "value": "gradual-rollout",
+    "percentage": 15,
+    "percentageAttribute": "sessionId"
+  }
+]
+'@ | Set-Content rules.json
+
+dotnet run --project tools/FfaasLite.AdminCli -- --api-key <token> flags upsert checkout --rules rules.json
+```
+
+The CLI deserialises the JSON into `TargetRule` objects, preserving advanced fields like `percentage`, `percentageAttribute`, and `segmentDelimiter`.
+
 For a walkthrough of CLI-based updates, see the README's **Admin CLI** section.

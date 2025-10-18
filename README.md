@@ -184,6 +184,7 @@ Rules are executed by ascending `Priority`. When priority is `null`, the rule is
   dotnet run --project tools/FfaasLite.AdminCli -- --api-key <token> audits list --take 10
   ```
 - Environment variables: set `FFAAAS_API_TOKEN` (required) and optionally `FFAAAS_API_URL` (defaults to `http://localhost:8080`).
+- Supply advanced targeting via `--rules <path>` where the file contains the `TargetRule` array (see `docs/guides/targeting.md`).
 - The CLI surfaces API errors clearly and respects optimistic concurrency when updating flags.
 
 ## .NET SDK
