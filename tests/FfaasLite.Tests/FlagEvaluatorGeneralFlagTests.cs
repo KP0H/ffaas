@@ -13,7 +13,7 @@ namespace FfaasLite.Tests
                 Key = "k",
                 Type = FlagType.Boolean,
                 BoolValue = true,
-                Rules = new() { new TargetRule("country", "gt", "NL", 1, BoolOverride: false) }
+                Rules = new() { new TargetRule("country", "foo", "NL", 1, BoolOverride: false) }
             };
             var ctx = new EvalContext("u1", new() { ["country"] = "NL" });
 
@@ -120,6 +120,41 @@ namespace FfaasLite.Tests
                 Assert.False((bool)res.Value!);
                 Assert.Equal("default", res.Variant);
             }
+        }
+
+        [Fact]
+        public void Regex_Match_Works()
+        {
+            var flag = new Flag
+            {
+                Key = "regex-flag",
+                Type = FlagType.Boolean,
+                BoolValue = false,
+                Rules = [new("email", "regex", @"^[a-z]+@example\.com$", 1, BoolOverride: true)]
+            };
+
+            var ctx = new EvalContext("u1", new() { ["email"] = "User@Example.com" });
+
+            var res = new FlagEvaluator().Evaluate(flag, ctx);
+            Assert.True((bool)res.Value!);
+        }
+
+        [Fact]
+        public void Regex_InvalidPattern_Is_Ignored()
+        {
+            var flag = new Flag
+            {
+                Key = "regex-invalid",
+                Type = FlagType.Boolean,
+                BoolValue = true,
+                Rules = [new("email", "regex", "[", 1, BoolOverride: false)]
+            };
+
+            var ctx = new EvalContext("u1", new() { ["email"] = "user@example.com" });
+
+            var res = new FlagEvaluator().Evaluate(flag, ctx);
+            Assert.True((bool)res.Value!);
+            Assert.Equal("default", res.Variant);
         }
     }
 }

@@ -8,6 +8,7 @@ Feature Flags as Code - minimal infrastructure for shipping boolean, string, and
 ## Highlights
 - ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, structured SSE stream (heartbeats + retries), basic audit log, automatic EF Core migrations, and health check.
 - PostgreSQL (`jsonb`) persistence with Entity Framework Core migrations; Redis cache with simple invalidation strategy.
+- Advanced targeting engine: numeric comparisons, regex, segment matching, and percentage rollouts (see `docs/guides/targeting.md`).
 - Admin CLI for managing flags and viewing audit history without crafting HTTP requests.
 - .NET SDK with local cache, realtime SSE synchronisation (backoff/heartbeats), helper extensions, and sample console client.
 - Dockerfile + docker-compose for local stack, GitHub Actions for CI, Docker image publishing, and NuGet trusted publishing.
@@ -162,6 +163,18 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/evaluate/new-ui -B
 - See `docs/operations/upgrade-playbook.md` for rolling upgrade and rollback guidance.
 
 ## Data Model
+- `Flag`: `Key`, `Type` (`boolean|string|number`), default value, optional rules, `UpdatedAt`.
+- `TargetRule`: attribute name, operator, comparison value, optional priority, override values, percentage rollout fields, and segment delimiter.
+- `AuditEntry`: action (`create|update|delete`), `FlagKey`, `Actor` (defaults to `system`), diff snapshot.
+
+Rules are executed by ascending `Priority`. When priority is `null`, the rule is evaluated last. If no rule matches, the default flag value is used.
+
+## Targeting Rules
+- Operators: equality/inequality, substring, numeric comparisons, regex, and segment matching.
+- Percentage rollouts derive stable buckets from `userId` (or a custom attribute) using hashing—set `percentage` and optional `percentageAttribute`/salt (`value`).
+- Configure segment delimiters per rule with `segmentDelimiter`; defaults to comma-separated lists.
+- See `docs/guides/targeting.md` for full syntax, examples, and edge-case behaviour.
+
 ## Admin CLI
 - Install/restore: `dotnet build` (CLI lives in `tools/FfaasLite.AdminCli`).
 - Run commands:
@@ -171,13 +184,8 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/evaluate/new-ui -B
   dotnet run --project tools/FfaasLite.AdminCli -- --api-key <token> audits list --take 10
   ```
 - Environment variables: set `FFAAAS_API_TOKEN` (required) and optionally `FFAAAS_API_URL` (defaults to `http://localhost:8080`).
+- Supply advanced targeting via `--rules <path>` where the file contains the `TargetRule` array (see `docs/guides/targeting.md`).
 - The CLI surfaces API errors clearly and respects optimistic concurrency when updating flags.
-
-- `Flag`: `Key`, `Type` (`boolean|string|number`), default value, optional rules, `UpdatedAt`.
-- `TargetRule`: attribute name, operator (`eq`, `ne`, `contains`), comparison value, optional priority, override values.
-- `AuditEntry`: action (`create|update|delete`), `FlagKey`, `Actor` (defaults to `system`), diff snapshot.
-
-Rules are executed by ascending `Priority`. When priority is `null`, the rule is evaluated last. If no rule matches, the default flag value is used.
 
 ## .NET SDK
 Install from NuGet:
