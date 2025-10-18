@@ -1,0 +1,26 @@
+* text eol=crlf
+
+# Preserve binary assets
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.zip binary
+*.tar binary
+*.gz binary
+*.7z binary
+*.pdf binary
+*.dll binary
+*.exe binary
+*.pdb binary
+*.snk binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+
+# Scripts that should stay LF
+*.sh text eol=lf
+*.bash text eol=lf
+Dockerfile text eol=lf
+

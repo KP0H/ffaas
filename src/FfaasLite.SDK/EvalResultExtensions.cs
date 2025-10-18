@@ -1,4 +1,4 @@
-﻿using FfaasLite.Core.Flags;
+using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 
 namespace FfaasLite.SDK

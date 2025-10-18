@@ -1,9 +1,11 @@
 using System.Net;
 using System.Net.Http;
 using System.Text.Json;
+
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using FfaasLite.SDK;
+
 using Xunit;
 
 namespace FfaasLite.Tests

@@ -2,13 +2,16 @@ using FfaasLite.Api.Contracts;
 using FfaasLite.Api.Security;
 using FfaasLite.Core.Models;
 using FfaasLite.Infrastructure.Db;
+
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+
 using NSubstitute;
+
 using StackExchange.Redis;
 
 namespace FfaasLite.Tests.Api;

@@ -1,4 +1,4 @@
-﻿namespace FfaasLite.Core.Models
+namespace FfaasLite.Core.Models
 {
     public class AuditEntry
     {

@@ -1,8 +1,10 @@
-﻿using FfaasLite.Core.Models;
+using System.Text.Json;
+
+using FfaasLite.Core.Models;
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
-using System.Text.Json;
 
 namespace FfaasLite.Infrastructure.Db
 {

@@ -1,4 +1,4 @@
-﻿namespace FfaasLite.Core.Models
+namespace FfaasLite.Core.Models
 {
     public enum FlagType { Boolean, String, Number }
 }

@@ -6,9 +6,9 @@ Feature Flags as Code - minimal infrastructure for shipping boolean, string, and
 [![GitHub package](https://img.shields.io/badge/packages-github-blue)](https://github.com/KP0H/ffaas/pkgs/nuget/FfaasLite.SDK)
 
 ## Highlights
-- ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, SSE stream, basic audit log, and health check.
+- ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, structured SSE stream (heartbeats + retries), basic audit log, and health check.
 - PostgreSQL (`jsonb`) persistence with Entity Framework Core migrations; Redis cache with simple invalidation strategy.
-- .NET SDK with local cache, SSE synchronization, helper extensions, and sample console client.
+- .NET SDK with local cache, realtime SSE synchronisation (backoff/heartbeats), helper extensions, and sample console client.
 - Dockerfile + docker-compose for local stack, GitHub Actions for CI, Docker image publishing, and NuGet trusted publishing.
 - Unit tests for the flag evaluator and SDK client behavior.
 
@@ -27,7 +27,7 @@ Feature Flags as Code - minimal infrastructure for shipping boolean, string, and
   +-----------+
 ```
 
-The API exposes CRUD for feature flags, an `Evaluate` endpoint used by SDKs, and an SSE stream (`/api/stream`) that pushes flag updates to connected clients. A WebSocket endpoint (`/ws`) is scaffolded but not finalized.
+The API exposes CRUD for feature flags, an `Evaluate` endpoint used by SDKs, and a structured SSE stream (`/api/stream`) that pushes typed change events with periodic heartbeats. The former WebSocket endpoint now returns **410 Gone** in favour of the hardened SSE channel.
 
 ## Quick Start
 ### Using Docker Compose
@@ -140,14 +140,19 @@ Without a valid key, `POST`/`PUT`/`DELETE` requests return `401`/`403` and audit
 | DELETE | `/api/flags/{key}` | Delete flag (requires `Editor`). |
 | POST   | `/api/evaluate/{key}` | Evaluate against a context payload. |
 | GET    | `/api/audit` | Return recent audit entries (requires `Reader`). |
-| GET    | `/api/stream` | Server-Sent Events with live flag updates. |
-| GET    | `/ws` | WebSocket placeholder (no events yet). |
+| GET    | `/api/stream` | Structured SSE feed with typed change events + heartbeats. |
+| GET    | `/ws` | Returns 410 Gone (WebSocket channel removed in favour of SSE). |
 
 ### Example
 ```powershell
 $context = @{ userId = "user-1"; attributes = @{ country = "NL" } } | ConvertTo-Json
 Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/evaluate/new-ui -Body $context -ContentType 'application/json'
 ```
+
+### Realtime Events
+- Each message arrives as `event: flag-change` with an incrementing `id` and JSON payload `{ "type": "created|updated|deleted", "version": long, "payload": { "key": "...", "flag": { ... } } }`.
+- Heartbeats (`event: heartbeat`) ship every 15 seconds; the stream also emits `retry: 5000` hints that clients can honour when reconnecting.
+- WebSocket consumers should migrate to SSE; the server now returns 410 for `/ws`.
 
 ## Data Model
 - `Flag`: `Key`, `Type` (`boolean|string|number`), default value, optional rules, `UpdatedAt`.
@@ -165,7 +170,7 @@ Install-Package FfaasLite.SDK
 Usage:
 ```csharp
 var client = new FlagClient("http://localhost:8080");
-await client.StartSseAsync();
+await client.StartRealtimeAsync(); // optional FlagStreamOptions lets you tweak backoff/heartbeat
 
 var context = new EvalContext(
     UserId: "user-42",
@@ -181,7 +186,7 @@ if (result.AsBool() == true)
 
 SDK features:
 - HTTP evaluation with automatic JSON normalization.
-- Optional SSE subscription to keep the local cache in sync.
+- Realtime SSE subscription with structured change events, heartbeats, and configurable reconnect backoff.
 - Helper extensions `AsBool`, `AsString`, and `AsNumber`.
 - Designed for dependency injection by supplying a configured `HttpClient`.
 

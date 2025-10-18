@@ -1,6 +1,7 @@
+using System.Diagnostics.Metrics;
+
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
-using System.Diagnostics.Metrics;
 
 namespace FfaasLite.Tests
 {

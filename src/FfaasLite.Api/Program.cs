@@ -1,18 +1,28 @@
+using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Text;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using System.Threading;
+using System.Threading.Tasks;
+
 using FfaasLite.Api.Contracts;
 using FfaasLite.Api.Helpers;
+using FfaasLite.Api.Realtime;
 using FfaasLite.Api.Security;
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using FfaasLite.Infrastructure.Cache;
 using FfaasLite.Infrastructure.Db;
+
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+
 using StackExchange.Redis;
-using System.IO;
-using System.Text;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 var cfg = builder.Configuration;
@@ -76,7 +86,12 @@ app.UseSwaggerUI();
 app.UseAuthentication();
 app.UseAuthorization();
 
-var sseClients = new List<HttpResponse>();
+var sseClients = new ConcurrentDictionary<Guid, SseClientConnection>();
+var sseJsonOptions = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+sseJsonOptions.Converters.Add(new JsonStringEnumConverter(JsonNamingPolicy.CamelCase));
+var heartbeatInterval = TimeSpan.FromSeconds(15);
+var retryAfter = TimeSpan.FromSeconds(5);
+var changeVersion = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
 app.MapGet("/health", () => Results.Ok(new { status = "ok" }));
 
@@ -98,7 +113,7 @@ app.MapPost("/api/flags", async (HttpContext httpContext, [FromBody] FlagCreateD
     db.Audit.Add(new AuditEntry { Action = "create", Actor = actor, FlagKey = flag.Key, DiffJson = new AuditDiff { Before = null, Updated = flag } });
     await db.SaveChangesAsync();
 
-    await BroadcastChange(flag);
+    await BroadcastFlagChangeAsync(flag, FlagChangeType.Created);
     await cache.RemoveAsync("flags:all");
     return Results.Created($"/api/flags/{flag.Key}", flag);
 }).RequireAuthorization(AuthConstants.Policies.Editor);
@@ -133,21 +148,21 @@ app.MapPut("/api/flags/{key}", async (HttpContext httpContext, string key, [From
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
 
-    if (dto.LastKnownUpdatedAt is null)
+    if (dto.LastKnownUpdatedAt is null || dto.LastKnownUpdatedAt == default)
     {
-        return Results.BadRequest(new
+        return Results.BadRequest(new ProblemDetails
         {
-            error = "lastKnownUpdatedAt is required to update a flag.",
-            currentUpdatedAt = existing.UpdatedAt
+            Title = "Missing concurrency token.",
+            Detail = "Provide lastKnownUpdatedAt from prior GET/POST response."
         });
     }
 
-    if (existing.UpdatedAt != dto.LastKnownUpdatedAt.Value)
+    if (existing.UpdatedAt != dto.LastKnownUpdatedAt)
     {
-        return Results.Conflict(new
+        return Results.Conflict(new ProblemDetails
         {
-            error = "Flag has been modified by another request. Refresh and retry.",
-            currentUpdatedAt = existing.UpdatedAt
+            Title = "Flag updated by another request.",
+            Detail = "Reload the flag and retry the operation with a fresh lastKnownUpdatedAt."
         });
     }
 
@@ -175,7 +190,7 @@ app.MapPut("/api/flags/{key}", async (HttpContext httpContext, string key, [From
     db.Audit.Add(new AuditEntry { Action = "update", Actor = actor, FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = existing } });
     await db.SaveChangesAsync();
 
-    await BroadcastChange(existing);
+    await BroadcastFlagChangeAsync(existing, FlagChangeType.Updated);
     await cache.RemoveAsync($"flag:{key}");
     await cache.RemoveAsync("flags:all");
     return Results.Ok(existing);
@@ -189,7 +204,7 @@ app.MapDelete("api/flags/{key}", async (HttpContext httpContext, string key, App
 {
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
-    var beforeObj = existing;
+    var beforeObj = CloneFlag(existing);
 
     db.Flags.Remove(existing);
     await db.SaveChangesAsync();
@@ -201,6 +216,7 @@ app.MapDelete("api/flags/{key}", async (HttpContext httpContext, string key, App
     var cache = app.Services.GetRequiredService<RedisCache>();
     await cache.RemoveAsync($"flag:{key}");
     await cache.RemoveAsync("flags:all");
+    await BroadcastFlagChangeAsync(beforeObj, FlagChangeType.Deleted);
     return Results.NoContent();
 }).RequireAuthorization(AuthConstants.Policies.Editor);
 
@@ -237,44 +253,225 @@ app.MapPost("/api/evaluate/{key}", async (
 app.MapGet("/api/stream", async (HttpContext context) =>
 {
     context.Response.Headers.Append("Content-Type", "text/event-stream");
-    lock (sseClients) sseClients.Add(context.Response);
-    var tcs = new TaskCompletionSource();
-    context.RequestAborted.Register(() => { lock (sseClients) sseClients.Remove(context.Response); tcs.TrySetResult(); });
-    await tcs.Task;
-});
+    context.Response.Headers.Append("Cache-Control", "no-cache");
+    context.Response.Headers.Append("Connection", "keep-alive");
+    context.Response.Headers.Append("X-Accel-Buffering", "no");
 
-app.Map("/ws", async (HttpContext context) =>
-{
-    if (context.WebSockets.IsWebSocketRequest)
+    await context.Response.Body.FlushAsync();
+
+    var clientId = Guid.NewGuid();
+    var connection = new SseClientConnection(context.Response);
+
+    if (!sseClients.TryAdd(clientId, connection))
     {
-        using var ws = await context.WebSockets.AcceptWebSocketAsync();
-        var tcs = new TaskCompletionSource();
-        context.RequestAborted.Register(() => tcs.TrySetResult());
-        await tcs.Task;
+        context.Response.StatusCode = StatusCodes.Status503ServiceUnavailable;
+        return;
     }
-    else context.Response.StatusCode = 400;
+
+    connection.AbortRegistration = context.RequestAborted.Register(() => RemoveClient(clientId));
+    connection.HeartbeatCts = CancellationTokenSource.CreateLinkedTokenSource(context.RequestAborted);
+    _ = Task.Run(() => SendHeartbeatsAsync(clientId, connection.HeartbeatCts.Token));
+
+    await SendRetryIntervalAsync(connection, retryAfter);
+    if (!await SendHeartbeatAsync(connection))
+    {
+        RemoveClient(clientId);
+        return;
+    }
+
+    try
+    {
+        await Task.Delay(Timeout.Infinite, context.RequestAborted);
+    }
+    catch (OperationCanceledException)
+    {
+        // client disconnected
+    }
+    finally
+    {
+        RemoveClient(clientId);
+    }
 });
 
-async Task BroadcastChange(Flag flag)
+app.MapGet("/ws", () =>
+        Results.Problem(
+            detail: "WebSocket updates are no longer available. Subscribe to /api/stream for realtime flag changes.",
+            statusCode: StatusCodes.Status410Gone,
+            title: "WebSocket endpoint removed"))
+   .WithName("WebSocketDeprecated")
+   .Produces(StatusCodes.Status410Gone);
+
+async Task BroadcastFlagChangeAsync(Flag flag, FlagChangeType changeType)
 {
-    var json = JsonSerializer.Serialize(flag);
-    var data = $"data: {json}\n\n";
-    var bytes = Encoding.UTF8.GetBytes(data);
-    List<HttpResponse> targets;
-    lock (sseClients) targets = sseClients.ToList();
-    foreach (var resp in targets)
+    var payload = new FlagChangePayload
     {
-        try
+        Key = flag.Key,
+        Flag = changeType == FlagChangeType.Deleted ? null : CloneFlag(flag)
+    };
+
+    var evt = new FlagChangeEvent
+    {
+        Type = changeType,
+        Version = NextVersion(),
+        Payload = payload
+    };
+
+    var message = JsonSerializer.Serialize(evt, sseJsonOptions);
+    var eventId = evt.Version.ToString(CultureInfo.InvariantCulture);
+
+    foreach (var entry in sseClients.ToArray())
+    {
+        var success = await SendSseAsync(entry.Value, "flag-change", eventId, message);
+        if (!success)
         {
-            await resp.Body.WriteAsync(bytes);
-            await resp.Body.FlushAsync();
-        }
-        catch
-        {
-            lock (sseClients) sseClients.Remove(resp);
+            RemoveClient(entry.Key);
         }
     }
 }
+
+async Task<bool> SendHeartbeatAsync(SseClientConnection connection)
+{
+    var payload = JsonSerializer.Serialize(new { at = DateTimeOffset.UtcNow }, sseJsonOptions);
+    return await SendSseAsync(connection, "heartbeat", null, payload);
+}
+
+async Task SendRetryIntervalAsync(SseClientConnection connection, TimeSpan retry)
+{
+    var entered = false;
+    try
+    {
+        await connection.WriteLock.WaitAsync();
+        entered = true;
+        var buffer = Encoding.UTF8.GetBytes($"retry: {(int)retry.TotalMilliseconds}\n\n");
+        await connection.Response.Body.WriteAsync(buffer);
+        await connection.Response.Body.FlushAsync();
+    }
+    catch
+    {
+        // client disconnected
+    }
+    finally
+    {
+        if (entered)
+        {
+            connection.WriteLock.Release();
+        }
+    }
+}
+
+async Task SendHeartbeatsAsync(Guid clientId, CancellationToken cancellationToken)
+{
+    while (!cancellationToken.IsCancellationRequested)
+    {
+        try
+        {
+            await Task.Delay(heartbeatInterval, cancellationToken);
+            if (!sseClients.TryGetValue(clientId, out var connection)) break;
+            var ok = await SendHeartbeatAsync(connection);
+            if (!ok)
+            {
+                RemoveClient(clientId);
+                break;
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            break;
+        }
+    }
+}
+
+async Task<bool> SendSseAsync(SseClientConnection connection, string? eventName, string? eventId, string data)
+{
+    var entered = false;
+    try
+    {
+        await connection.WriteLock.WaitAsync();
+        entered = true;
+        var builder = new StringBuilder();
+        if (!string.IsNullOrWhiteSpace(eventId))
+        {
+            builder.Append("id: ").Append(eventId).Append('\n');
+        }
+        if (!string.IsNullOrWhiteSpace(eventName))
+        {
+            builder.Append("event: ").Append(eventName).Append('\n');
+        }
+        builder.Append("data: ").Append(data).Append("\n\n");
+        var bytes = Encoding.UTF8.GetBytes(builder.ToString());
+        await connection.Response.Body.WriteAsync(bytes);
+        await connection.Response.Body.FlushAsync();
+        return true;
+    }
+    catch
+    {
+        return false;
+    }
+    finally
+    {
+        if (entered)
+        {
+            connection.WriteLock.Release();
+        }
+    }
+}
+
+Flag CloneFlag(Flag flag)
+{
+    var rules = flag.Rules is { Count: > 0 } existingRules
+        ? existingRules.Select(r => r with { }).ToList()
+        : new List<TargetRule>();
+
+    return new Flag
+    {
+        Id = flag.Id,
+        Key = flag.Key,
+        Type = flag.Type,
+        BoolValue = flag.BoolValue,
+        StringValue = flag.StringValue,
+        NumberValue = flag.NumberValue,
+        Rules = rules,
+        UpdatedAt = flag.UpdatedAt
+    };
+}
+
+void RemoveClient(Guid clientId)
+{
+    if (!sseClients.TryRemove(clientId, out var connection)) return;
+
+    try
+    {
+        connection.AbortRegistration.Dispose();
+    }
+    catch
+    {
+        // ignore disposal issues
+    }
+
+    try
+    {
+        if (connection.HeartbeatCts is not null)
+        {
+            connection.HeartbeatCts.Cancel();
+            connection.HeartbeatCts.Dispose();
+        }
+    }
+    catch
+    {
+        // ignore cancellation problems
+    }
+
+    try
+    {
+        connection.WriteLock.Dispose();
+    }
+    catch
+    {
+        // ignore disposal issues
+    }
+}
+
+long NextVersion() => Interlocked.Increment(ref changeVersion);
 
 string ResolveActor(HttpContext context)
     => context.User?.Identity?.IsAuthenticated == true
@@ -284,4 +481,3 @@ string ResolveActor(HttpContext context)
 app.Run();
 
 public partial class Program { }
-
