@@ -1,17 +1,17 @@
 # Roadmap
 
 ## Current Snapshot
-- **API**: Minimal flag CRUD, evaluation, audit log, health check, SSE stream, and WebSocket placeholder implemented in ASP.NET Core 8.
+- **API**: Flag CRUD, evaluation, audit log, health check, and a hardened SSE stream with heartbeats/retry hints (WebSocket endpoint retired) on ASP.NET Core 8.
 - **Storage**: PostgreSQL `jsonb` for flags/audit with Entity Framework Core migrations; Redis-backed cache with basic invalidation.
-- **SDK**: .NET client with local cache, SSE sync, evaluate helper extensions, sample console app, and unit tests.
+- **SDK**: .NET client with local cache, realtime SSE sync (heartbeats/backoff), snapshot helpers, sample console app, and unit tests.
 - **Tooling**: Dockerfile + docker-compose for local stack, GitHub Actions CI (build/test, Docker lint) and release pipelines (Docker image, NuGet).
-- **Coverage**: Unit tests around evaluator and SDK happy-paths; lacks integration coverage.
+- **Coverage**: Unit tests plus realtime SSE/SDK integration tests; broader end-to-end coverage with Postgres/Redis remains outstanding.
 
 ## Next Release (v0.2.0) Goals
 ### Hardening the Service
 - Add API authentication (PAT or JWT) and role separation for write operations; surface authenticated actor in `AuditEntry`.
 - Implement optimistic concurrency (row version or `UpdatedAt` check) and improve cache invalidation to avoid stale reads after concurrent updates.
-- Finalize the WebSocket channel or remove the stub; align SSE payloads with typed change events (`created/updated/deleted`) and add heartbeat/auto-reconnect guidance.
+- Persist a short-lived SSE journal for clients using `Last-Event-ID` and publish connection/heartbeat metrics.
 - Provide migration automation in Docker entrypoint and document rolling upgrade steps.
 - Externalize API keys/secrets to managed secret stores with rotation guidance and remove plaintext configuration.
 - Publish ETag headers for flag resources so clients can rely on `If-Match` instead of custom timestamps.
@@ -37,6 +37,7 @@
 - UI/SDK support for experiments (A/B testing) with metrics hooks.
 
 ## Recently Completed
+- Realtime channel stabilised: structured SSE events, heartbeat/resend hints, WebSocket retired, SDK backoff/heartbeat support, and integration coverage.
 - Initial MVP shipped: CRUD API, evaluation engine, Redis cache, SSE broadcast, .NET SDK, CI, and release automation.
 - Sample console app added to demonstrate SDK usage.
 - First EF Core migration created and validated against PostgreSQL 16.

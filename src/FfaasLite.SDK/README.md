@@ -9,12 +9,16 @@ A lightweight .NET client for the FFaaS Lite feature flag service.
 Install-Package FfaasLite.SDK
 ```
 
-Targets `net8.0` and depends only on BCL + `System.Net.WebSockets.Client`.
+Targets `net8.0` and depends only on BCL assemblies (no WebSocket client required).
 
 ## Quick Start
 ```csharp
 var client = new FlagClient("https://ffaas.example.com");
-await client.StartSseAsync(); // optional: sync local cache via SSE
+await client.StartRealtimeAsync(new FlagStreamOptions
+{
+    HeartbeatTimeout = TimeSpan.FromSeconds(30),
+    InitialRetryDelay = TimeSpan.FromSeconds(1)
+}); // optional but recommended for realtime cache updates
 
 var context = new EvalContext(
     UserId: "user-42",
@@ -32,10 +36,11 @@ if (result.AsBool() == true)
 
 ## Features
 - Local in-memory cache keyed by flag `Key`.
-- Server-Sent Events listener (`/api/stream`) that updates the cache when flags change.
+- Structured SSE listener (`/api/stream`) with heartbeats and configurable reconnect backoff.
+- Snapshot helpers (`RefreshSnapshotAsync`, `TryGetCachedFlag`, `SnapshotCachedFlags`) for manual cache control.
 - Normalizes JSON payloads so that `EvalResult.Value` uses native .NET types.
 - Helper extensions `AsBool`, `AsString`, and `AsNumber`.
-- Disposable; call `await client.DisposeAsync()` on shutdown to stop the SSE listener.
+- Disposable; call `await client.StopRealtimeAsync()` or `await client.DisposeAsync()` during application shutdown.
 
 ## HttpClient Integration
 You can supply a custom `HttpClient` instance when constructing the client:
@@ -43,16 +48,17 @@ You can supply a custom `HttpClient` instance when constructing the client:
 services.AddHttpClient<IFlagClient, FlagClient>(client =>
 {
     client.BaseAddress = new Uri("https://ffaas.example.com");
-    client.Timeout = TimeSpan.FromSeconds(5);
+    client.Timeout = Timeout.InfiniteTimeSpan; // SSE responses stay open indefinitely
 });
 ```
 
-When you provide the `HttpClient`, the SDK keeps HTTP/1.1 semantics and adds no additional handlers. Configure retry policies, proxies, and headers as needed.
+When you provide the `HttpClient`, the SDK enforces HTTP/1.1 semantics, disables proxy usage, and leaves further handlers/policies up to you.
 
-## SSE Considerations
-- `StartSseAsync` is idempotent; call it once during application startup.
-- The SSE loop currently ignores comment and retry fields. Consider wrapping it in your own resilience policy if the service is not HA.
-- Cache invalidation depends on SSE events broadcasting full flag payloads.
+## Realtime Considerations
+- `StartRealtimeAsync` is idempotent; call it once during application startup (pass `FlagStreamOptions` to tweak backoff and heartbeat thresholds).
+- Server-supplied `retry` hints are honoured; failed connections fall back to exponential backoff capped by `MaxRetryDelay`.
+- Heartbeat gaps trigger a reconnect when they exceed `HeartbeatTimeout`. Increase the threshold if the stream traverses slow proxies.
+- Call `RefreshSnapshotAsync` if you suspect missed events, or wire a periodic snapshot as a safety net.
 
 ## Thread Safety
 - Evaluations against the local cache are thread-safe (uses `ConcurrentDictionary`).
