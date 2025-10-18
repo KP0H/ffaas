@@ -7,6 +7,9 @@ namespace FfaasLite.Core.Models
         int? Priority = null,
         bool? BoolOverride = null,
         string? StringOverride = null,
-        double? NumberOverride = null
+        double? NumberOverride = null,
+        double? Percentage = null,
+        string? PercentageAttribute = null,
+        string SegmentDelimiter = ","
     );
 }
