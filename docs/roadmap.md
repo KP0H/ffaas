@@ -1,7 +1,7 @@
 # Roadmap
 
 ## Current Snapshot
-- **API**: Flag CRUD, evaluation, audit log, health check, and a hardened SSE stream with heartbeats/retry hints (WebSocket endpoint retired) on ASP.NET Core 8.
+- **API**: Flag CRUD, evaluation, audit log, health check, a hardened SSE stream (heartbeats/retry hints), and automatic EF Core migrations on ASP.NET Core 8.
 - **Storage**: PostgreSQL `jsonb` for flags/audit with Entity Framework Core migrations; Redis-backed cache with basic invalidation.
 - **SDK**: .NET client with local cache, realtime SSE sync (heartbeats/backoff), snapshot helpers, sample console app, and unit tests.
 - **Tooling**: Dockerfile + docker-compose for local stack, GitHub Actions CI (build/test, Docker lint) and release pipelines (Docker image, NuGet).
@@ -12,7 +12,7 @@
 - Add API authentication (PAT or JWT) and role separation for write operations; surface authenticated actor in `AuditEntry`.
 - Implement optimistic concurrency (row version or `UpdatedAt` check) and improve cache invalidation to avoid stale reads after concurrent updates.
 - Persist a short-lived SSE journal for clients using `Last-Event-ID` and publish connection/heartbeat metrics.
-- Provide migration automation in Docker entrypoint and document rolling upgrade steps.
+- Add automated schema drift detection and alerting when migrations are pending.
 - Externalize API keys/secrets to managed secret stores with rotation guidance and remove plaintext configuration.
 - Publish ETag headers for flag resources so clients can rely on `If-Match` instead of custom timestamps.
 
@@ -39,6 +39,7 @@
 ## Recently Completed
 - Realtime channel stabilised: structured SSE events, heartbeat/resend hints, WebSocket retired, SDK backoff/heartbeat support, and integration coverage.
 - Initial MVP shipped: CRUD API, evaluation engine, Redis cache, SSE broadcast, .NET SDK, CI, and release automation.
+- Migration automation & upgrade playbook: startup hosted service with retries, skip flag, and documented rollout guidance.
 - Sample console app added to demonstrate SDK usage.
 - First EF Core migration created and validated against PostgreSQL 16.
 - API authentication added with role-based API keys and audit actor attribution.
