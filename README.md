@@ -55,12 +55,18 @@ The API exposes CRUD for feature flags, an `Evaluate` endpoint used by SDKs, and
    dotnet run --project src/FfaasLite.Api
    ```
 
-### SDK Sample
-Run the console sample once the API is reachable:
-```powershell
-cd samples/FfaasLite.ConsoleSample
-dotnet run
-```
+### SDK Samples
+- **Console** – quick evaluation walk-through once the API is reachable:
+  ```powershell
+  cd samples/FfaasLite.ConsoleSample
+  dotnet run
+  ```
+- **Worker** – demonstrates hosting `FlagClient` inside a background service with realtime streaming, typed helpers, and background refresh:
+  ```powershell
+  cd samples/FfaasLite.WorkerSample
+  dotnet run
+  ```
+  Configure the target API and token via `appsettings.json` or environment variables (`FlagClient__BaseUrl`, `FlagClient__ApiKey`).
 
 ## Authentication
 Write operations now require an API key. Two roles are supported:
