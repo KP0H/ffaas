@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
@@ -241,6 +242,57 @@ namespace FfaasLite.Tests
             await Assert.ThrowsAsync<TaskCanceledException>(() => client.RefreshSnapshotAsync());
         }
 
+        [Fact]
+        public void TypedHelperBuilder_Generates_Code()
+        {
+            var options = new FlagClientTypedHelperOptions
+            {
+                Namespace = "MyApp.Flags",
+                ClassName = "FeatureFlags",
+                FlagKeys = new[] { "beta", "checkout-flow" }
+            };
+
+            var code = TypedFlagHelperBuilder.Generate(options);
+
+            Assert.Contains("namespace MyApp.Flags;", code);
+            Assert.Contains("public static class FeatureFlags", code);
+            Assert.Contains("betaBool", code);
+            Assert.Contains("checkout_flowBool", code);
+        }
+
+        [Fact]
+        public async Task GenerateTypedHelper_Uses_Cache_When_Keys_Empty()
+        {
+            var flags = new[]
+            {
+                new Flag { Key = "hello-world", Type = FlagType.Boolean, BoolValue = true }
+            };
+
+            var handler = new MockHandler((req, ct) =>
+            {
+                if (req.Method == HttpMethod.Get && req.RequestUri!.AbsolutePath.Equals("/api/flags", StringComparison.OrdinalIgnoreCase))
+                {
+                    var json = JsonSerializer.Serialize(flags, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                    var response = new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(json)
+                    };
+                    response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    return Task.FromResult(response);
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            });
+
+            var http = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+            await using var client = new FlagClient("http://localhost", http);
+            await client.RefreshSnapshotAsync();
+
+            var code = client.GenerateTypedHelper(new FlagClientTypedHelperOptions { FlagKeys = Array.Empty<string>(), ClassName = "GeneratedFlags" });
+
+            Assert.Contains("GeneratedFlags", code);
+            Assert.Contains("hello_worldBool", code);
+        }
         [Fact]
         public async Task SendAsyncWrapper_Is_Invoked()
         {

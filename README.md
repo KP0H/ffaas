@@ -10,6 +10,7 @@ Feature Flags as Code - minimal infrastructure for shipping boolean, string, and
 - PostgreSQL (`jsonb`) persistence with Entity Framework Core migrations; Redis cache with simple invalidation strategy.
 - Advanced targeting engine: numeric comparisons, regex, segment matching, and percentage rollouts (see `docs/guides/targeting.md`).
 - Admin CLI for managing flags and viewing audit history without crafting HTTP requests.
+- Typed helper generator to scaffold strongly-typed accessors for cached flags.
 - .NET SDK with local cache, realtime SSE synchronisation (backoff/heartbeats), helper extensions, and sample console client.
 - Dockerfile + docker-compose for local stack, GitHub Actions for CI, Docker image publishing, and NuGet trusted publishing.
 - Unit tests for the flag evaluator and SDK client behavior.
@@ -213,6 +214,8 @@ if (result.AsBool() == true)
 SDK features:
 - HTTP evaluation with automatic JSON normalization.
 - Realtime SSE subscription with structured change events, heartbeats, and configurable reconnect backoff.
+- Optional preload/bootstrap and background refresh via `FlagClientOptions` + `FlagClient.StartBackgroundRefreshAsync`.
+- Resilience hooks: per-request timeouts and `SendAsyncWrapper` to integrate Polly/circuit-breaker policies.
 - Helper extensions `AsBool`, `AsString`, and `AsNumber`.
 - Designed for dependency injection by supplying a configured `HttpClient`.
 

@@ -160,6 +160,33 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
 
     public bool TryGetCachedFlag(string key, out Flag? flag)
         => _flags.TryGetValue(key, out flag);
+    public string GenerateTypedHelper(FlagClientTypedHelperOptions options)
+    {
+        if (options is null) throw new ArgumentNullException(nameof(options));
+
+        var keys = options.FlagKeys?.Count > 0
+            ? options.FlagKeys
+            : SnapshotCachedFlags().Keys;
+
+        var resolvedKeys = keys
+            .Where(k => !string.IsNullOrWhiteSpace(k))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+
+        if (resolvedKeys.Length == 0)
+        {
+            throw new InvalidOperationException("No flag keys available for typed helper generation.");
+        }
+
+        var helperOptions = new FlagClientTypedHelperOptions
+        {
+            ClassName = options.ClassName,
+            Namespace = options.Namespace,
+            FlagKeys = resolvedKeys
+        };
+
+        return TypedFlagHelperBuilder.Generate(helperOptions);
+    }
 
     public async Task<EvalResult> EvaluateAsync(string key, EvalContext ctx, CancellationToken ct = default)
     {
