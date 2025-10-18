@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Roadmap
+    url: https://github.com/KP0H/ffaas/tree/master/docs/roadmap.md
+    about: Review upcoming work to avoid duplicates before filing a new issue.
