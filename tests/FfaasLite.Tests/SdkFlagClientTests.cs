@@ -1,11 +1,13 @@
+using System.Collections.Generic;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text.Json;
-
+using System.Threading;
+using System.Threading.Tasks;
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 using FfaasLite.SDK;
-
 using Xunit;
 
 namespace FfaasLite.Tests
@@ -98,6 +100,115 @@ namespace FfaasLite.Tests
             Assert.Equal(42.5, rule.Percentage);
             Assert.Equal("sessionId", rule.PercentageAttribute);
             Assert.Equal("|", rule.SegmentDelimiter);
+        }
+
+        [Fact]
+        public async Task CreateAsync_BootstrapLoadsFlags()
+        {
+            var callCount = 0;
+            var handler = new MockHandler((req, ct) =>
+            {
+                if (req.Method == HttpMethod.Get && req.RequestUri!.AbsolutePath.Equals("/api/flags", StringComparison.OrdinalIgnoreCase))
+                {
+                    Interlocked.Increment(ref callCount);
+                    var json = JsonSerializer.Serialize(new[]
+                    {
+                        new Flag { Key = "beta", Type = FlagType.Boolean, BoolValue = true }
+                    }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+                    var response = new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(json)
+                    };
+                    response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    return Task.FromResult(response);
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            });
+
+            var options = new FlagClientOptions
+            {
+                BaseUrl = "http://localhost",
+                HttpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+                BootstrapOnStartup = true,
+                StartRealtimeStream = false,
+                BackgroundRefresh = new BackgroundRefreshOptions { Enabled = false }
+            };
+
+            await using var client = await FlagClient.CreateAsync(options);
+
+            Assert.Equal(1, callCount);
+            Assert.True(client.TryGetCachedFlag("beta", out var flag));
+            Assert.NotNull(flag);
+            Assert.True(flag!.BoolValue);
+        }
+
+        [Fact]
+        public async Task BackgroundRefresh_Performs_PeriodicUpdates()
+        {
+            var callCount = 0;
+            var handler = new MockHandler((req, ct) =>
+            {
+                if (req.Method == HttpMethod.Get && req.RequestUri!.AbsolutePath.Equals("/api/flags", StringComparison.OrdinalIgnoreCase))
+                {
+                    var iteration = Interlocked.Increment(ref callCount);
+                    var flag = new Flag
+                    {
+                        Key = "beta",
+                        Type = FlagType.Boolean,
+                        BoolValue = iteration % 2 == 0
+                    };
+                    var json = JsonSerializer.Serialize(new[] { flag }, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+                    var response = new HttpResponseMessage(HttpStatusCode.OK)
+                    {
+                        Content = new StringContent(json)
+                    };
+                    response.Content.Headers.ContentType = new MediaTypeHeaderValue("application/json");
+                    return Task.FromResult(response);
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            });
+
+            var httpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") };
+            await using var client = new FlagClient("http://localhost", httpClient);
+
+            await client.StartBackgroundRefreshAsync(TimeSpan.FromMilliseconds(25));
+            await Task.Delay(120);
+            Assert.True(callCount >= 2);
+            await client.StopBackgroundRefreshAsync();
+        }
+
+        [Fact]
+        public async Task BackgroundRefresh_Errors_Are_Reported()
+        {
+            var captured = new List<Exception>();
+            var handler = new MockHandler((req, ct) =>
+            {
+                if (req.Method == HttpMethod.Get && req.RequestUri!.AbsolutePath.Equals("/api/flags", StringComparison.OrdinalIgnoreCase))
+                {
+                    return Task.FromException<HttpResponseMessage>(new HttpRequestException("boom"));
+                }
+
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.NotFound));
+            });
+
+            var options = new FlagClientOptions
+            {
+                BaseUrl = "http://localhost",
+                HttpClient = new HttpClient(handler) { BaseAddress = new Uri("http://localhost") },
+                BootstrapOnStartup = false,
+                StartRealtimeStream = false,
+                BackgroundRefresh = new BackgroundRefreshOptions { Enabled = true, Interval = TimeSpan.FromMilliseconds(20) },
+                OnBackgroundRefreshError = ex => captured.Add(ex)
+            };
+
+            await using var client = await FlagClient.CreateAsync(options);
+            await Task.Delay(80);
+            await client.StopBackgroundRefreshAsync();
+
+            Assert.NotEmpty(captured);
         }
 
         internal sealed class MockHandler : HttpMessageHandler

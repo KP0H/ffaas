@@ -5,13 +5,13 @@ using System.Globalization;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Net.Http.Json;
 using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading;
 using System.Threading.Tasks;
-
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
 
@@ -33,6 +33,54 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
     private FlagStreamOptions _options = FlagStreamOptions.CreateDefault();
     private long _lastVersion;
     private TimeSpan? _serverSuggestedRetry;
+    private CancellationTokenSource? _backgroundRefreshCts;
+    private Task? _backgroundRefreshTask;
+    private Action<Exception>? _backgroundRefreshErrorHandler;
+
+    public static async Task<FlagClient> CreateAsync(FlagClientOptions options, CancellationToken ct = default)
+    {
+        if (options is null) throw new ArgumentNullException(nameof(options));
+        if (string.IsNullOrWhiteSpace(options.BaseUrl))
+        {
+            throw new ArgumentException("BaseUrl must be provided.", nameof(options));
+        }
+
+        if (options.HttpClient is not null && options.HttpClient.BaseAddress is null)
+        {
+            options.HttpClient.BaseAddress = new Uri(options.BaseUrl);
+        }
+
+        var client = new FlagClient(options.BaseUrl, options.HttpClient);
+        client._backgroundRefreshErrorHandler = options.OnBackgroundRefreshError;
+
+        if (!string.IsNullOrEmpty(options.ApiKey))
+        {
+            if (!client._http.DefaultRequestHeaders.Contains("X-Api-Key"))
+            {
+                client._http.DefaultRequestHeaders.Add("X-Api-Key", options.ApiKey);
+            }
+            client._http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", options.ApiKey);
+        }
+
+        options.ConfigureHttpClient?.Invoke(client._http);
+
+        if (options.BootstrapOnStartup)
+        {
+            await client.RefreshSnapshotAsync(ct).ConfigureAwait(false);
+        }
+
+        if (options.StartRealtimeStream)
+        {
+            await client.StartRealtimeAsync(options.StreamOptions, ct).ConfigureAwait(false);
+        }
+
+        if (options.BackgroundRefresh.Enabled)
+        {
+            await client.StartBackgroundRefreshAsync(options.BackgroundRefresh.Interval, ct).ConfigureAwait(false);
+        }
+
+        return client;
+    }
 
     public FlagClient(string baseUrl, HttpClient? http = null)
     {
@@ -175,8 +223,77 @@ public sealed class FlagClient : IFlagClient, IAsyncDisposable
         }
     }
 
+    public Action<Exception>? BackgroundRefreshErrorHandler
+    {
+        get => _backgroundRefreshErrorHandler;
+        set => _backgroundRefreshErrorHandler = value;
+    }
+
+    public async Task StartBackgroundRefreshAsync(TimeSpan interval, CancellationToken ct = default)
+    {
+        if (interval <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(interval));
+
+        await StopBackgroundRefreshAsync().ConfigureAwait(false);
+
+        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(ct);
+        _backgroundRefreshCts = linkedCts;
+
+        _backgroundRefreshTask = Task.Run(async () =>
+        {
+            while (!linkedCts.IsCancellationRequested)
+            {
+                try
+                {
+                    await RefreshSnapshotAsync(linkedCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (linkedCts.IsCancellationRequested)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    _backgroundRefreshErrorHandler?.Invoke(ex);
+                }
+
+                try
+                {
+                    await Task.Delay(interval, linkedCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+            }
+        }, CancellationToken.None);
+    }
+
+    public async Task StopBackgroundRefreshAsync()
+    {
+        if (_backgroundRefreshCts is not null)
+        {
+            _backgroundRefreshCts.Cancel();
+            _backgroundRefreshCts.Dispose();
+            _backgroundRefreshCts = null;
+        }
+
+        if (_backgroundRefreshTask is not null)
+        {
+            try
+            {
+                await _backgroundRefreshTask.ConfigureAwait(false);
+            }
+            catch (OperationCanceledException)
+            {
+                // expected on shutdown
+            }
+
+            _backgroundRefreshTask = null;
+        }
+    }
+
     public async ValueTask DisposeAsync()
     {
+        await StopBackgroundRefreshAsync().ConfigureAwait(false);
         await StopRealtimeAsync().ConfigureAwait(false);
 
         if (_ownsHttpClient)
