@@ -1,0 +1,18 @@
+# CODEOWNERS
+# Lines are evaluated from top to bottom. The last matching pattern takes ownership.
+# Update the handles below when maintainers change.
+
+*                           @KP0H
+
+# API and infrastructure
+/src/FfaasLite.Api/         @KP0H
+/src/FfaasLite.Infrastructure/ @KP0H
+/src/FfaasLite.Core/        @KP0H
+
+# SDK and client samples
+/src/FfaasLite.SDK/         @KP0H
+/samples/                   @KP0H
+
+# Tests and documentation
+/tests/                     @KP0H
+/docs/                      @KP0H
