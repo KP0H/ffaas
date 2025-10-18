@@ -17,9 +17,9 @@
 - Publish ETag headers for flag resources so clients can rely on `If-Match` instead of custom timestamps.
 
 ### Developer & User Experience
-- Ship an admin UI (or minimal CLI) for managing flags and viewing audits instead of manual API calls.
 - Extend targeting operators (greater-than, regex, segments) and add percentage rollouts; document targeting evaluation order with examples.
 - Deliver richer SDK ergonomics: preload flags on startup, typed helpers per flag, resilience policies, optional background refresh without SSE.
+- Enhance the admin CLI with interactive flows and bulk import/export capabilities.
 - Write quick-start guides for Windows/macOS/Linux, including sample seed scripts for flags.
 
 ### Observability & Quality
@@ -39,6 +39,7 @@
 ## Recently Completed
 - Realtime channel stabilised: structured SSE events, heartbeat/resend hints, WebSocket retired, SDK backoff/heartbeat support, and integration coverage.
 - Initial MVP shipped: CRUD API, evaluation engine, Redis cache, SSE broadcast, .NET SDK, CI, and release automation.
+- Admin CLI delivered: flag CRUD, optimistic concurrency aware upsert, audit viewer, and CLI docs/tests.
 - Migration automation & upgrade playbook: startup hosted service with retries, skip flag, and documented rollout guidance.
 - Sample console app added to demonstrate SDK usage.
 - First EF Core migration created and validated against PostgreSQL 16.

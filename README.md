@@ -8,6 +8,7 @@ Feature Flags as Code - minimal infrastructure for shipping boolean, string, and
 ## Highlights
 - ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, structured SSE stream (heartbeats + retries), basic audit log, automatic EF Core migrations, and health check.
 - PostgreSQL (`jsonb`) persistence with Entity Framework Core migrations; Redis cache with simple invalidation strategy.
+- Admin CLI for managing flags and viewing audit history without crafting HTTP requests.
 - .NET SDK with local cache, realtime SSE synchronisation (backoff/heartbeats), helper extensions, and sample console client.
 - Dockerfile + docker-compose for local stack, GitHub Actions for CI, Docker image publishing, and NuGet trusted publishing.
 - Unit tests for the flag evaluator and SDK client behavior.
@@ -161,6 +162,17 @@ Invoke-RestMethod -Method Post -Uri http://localhost:8080/api/evaluate/new-ui -B
 - See `docs/operations/upgrade-playbook.md` for rolling upgrade and rollback guidance.
 
 ## Data Model
+## Admin CLI
+- Install/restore: `dotnet build` (CLI lives in `tools/FfaasLite.AdminCli`).
+- Run commands:
+  ```powershell
+  dotnet run --project tools/FfaasLite.AdminCli -- --api-key <token> flags list
+  dotnet run --project tools/FfaasLite.AdminCli -- --api-key <token> flags upsert beta --type boolean --bool-value true
+  dotnet run --project tools/FfaasLite.AdminCli -- --api-key <token> audits list --take 10
+  ```
+- Environment variables: set `FFAAAS_API_TOKEN` (required) and optionally `FFAAAS_API_URL` (defaults to `http://localhost:8080`).
+- The CLI surfaces API errors clearly and respects optimistic concurrency when updating flags.
+
 - `Flag`: `Key`, `Type` (`boolean|string|number`), default value, optional rules, `UpdatedAt`.
 - `TargetRule`: attribute name, operator (`eq`, `ne`, `contains`), comparison value, optional priority, override values.
 - `AuditEntry`: action (`create|update|delete`), `FlagKey`, `Actor` (defaults to `system`), diff snapshot.
