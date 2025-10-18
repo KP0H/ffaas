@@ -9,6 +9,7 @@ Feature Flags as Code - minimal infrastructure for shipping boolean, string, and
 - ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, structured SSE stream (heartbeats + retries), basic audit log, automatic EF Core migrations, and health check.
 - PostgreSQL (`jsonb`) persistence with Entity Framework Core migrations; Redis cache with simple invalidation strategy.
 - Advanced targeting engine: numeric comparisons, regex, segment matching, and percentage rollouts (see `docs/guides/targeting.md`).
+- Hosted service guidance and FlagClient options for bootstrap/background refresh (see `docs/guides/sdk-hosted-service.md`).
 - Admin CLI for managing flags and viewing audit history without crafting HTTP requests.
 - Typed helper generator to scaffold strongly-typed accessors for cached flags.
 - .NET SDK with local cache, realtime SSE synchronisation (backoff/heartbeats), helper extensions, and sample console client.
@@ -220,6 +221,39 @@ SDK features:
 - Designed for dependency injection by supplying a configured `HttpClient`.
 
 See `src/FfaasLite.SDK/README.md` for additional details.
+## FlagClient Options
+```csharp
+var options = new FlagClientOptions
+{
+    BaseUrl = configuration["Ffaas:BaseUrl"] ?? "http://localhost:8080",
+    ApiKey = configuration["Ffaas:ApiKey"],
+    RequestTimeout = TimeSpan.FromSeconds(2),
+    BootstrapOnStartup = true,
+    StartRealtimeStream = true,
+    BackgroundRefresh = new BackgroundRefreshOptions
+    {
+        Enabled = true,
+        Interval = TimeSpan.FromSeconds(30)
+    },
+    SendAsyncWrapper = (next, request, completion, token) =>
+    {
+        // plug Polly or other resilience policies here
+        return next(request, completion, token);
+    }
+};
+```
+
+## Typed Helper Generation
+- See `docs/guides/sdk-hosted-service.md` for full examples.
+```csharp
+var code = client.GenerateTypedHelper(new FlagClientTypedHelperOptions
+{
+    Namespace = "MyApp.Flags",
+    ClassName = "FeatureFlags"
+});
+File.WriteAllText("FeatureFlags.g.cs", code);
+```
+
 
 ## Development
 - Restore/build/test:
