@@ -1,0 +1,24 @@
+[
+  {
+    "attribute": "country",
+    "operator": "eq",
+    "value": "US",
+    "priority": 5,
+    "boolOverride": true
+  },
+  {
+    "attribute": "segments",
+    "operator": "segment",
+    "value": "vip,early-access",
+    "priority": 10,
+    "boolOverride": true
+  },
+  {
+    "attribute": "userId",
+    "operator": "percentage",
+    "value": "checkout-experiment",
+    "percentage": 45,
+    "priority": 20,
+    "boolOverride": true
+  }
+]

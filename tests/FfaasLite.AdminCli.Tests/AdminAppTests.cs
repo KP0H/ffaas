@@ -1,10 +1,12 @@
+using System.IO;
 using System.Net;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
-using System.IO;
+
 using FfaasLite.AdminCli;
 using FfaasLite.Core.Models;
+
 using Xunit;
 
 namespace FfaasLite.AdminCli.Tests;
@@ -65,7 +67,7 @@ public class AdminAppTests
             Assert.Equal(HttpMethod.Post, req.Method);
             var payload = req.Content!.ReadAsStringAsync().Result;
             var dto = JsonSerializer.Deserialize<FlagCreateDto>(payload, Json);
-            
+
             Assert.Equal("new-flag", dto.Key);
             Assert.Equal(FlagType.String, dto.Type);
             Assert.Equal("hello", dto.StringValue);
@@ -108,7 +110,7 @@ public class AdminAppTests
             Assert.Equal(HttpMethod.Put, req.Method);
             var payload = req.Content!.ReadAsStringAsync().Result;
             var dto = JsonSerializer.Deserialize<FlagUpdateDto>(payload, Json);
-            
+
             Assert.True(dto.BoolValue);
             Assert.Equal(existing.UpdatedAt, dto.LastKnownUpdatedAt);
 

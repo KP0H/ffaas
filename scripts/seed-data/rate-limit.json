@@ -1,0 +1,16 @@
+[
+  {
+    "attribute": "segments",
+    "operator": "segment",
+    "value": "vip",
+    "priority": 5,
+    "numberOverride": 100
+  },
+  {
+    "attribute": "appVersion",
+    "operator": "lt",
+    "value": "1.5",
+    "priority": 10,
+    "numberOverride": 25
+  }
+]

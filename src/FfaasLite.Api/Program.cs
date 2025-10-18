@@ -112,13 +112,20 @@ app.MapPost("/api/flags", async (HttpContext httpContext, [FromBody] FlagCreateD
     };
 
     var actor = ResolveActor(httpContext);
+    var snapshot = CloneFlag(flag);
 
     db.Flags.Add(flag);
-    db.Audit.Add(new AuditEntry { Action = "create", Actor = actor, FlagKey = flag.Key, DiffJson = new AuditDiff { Before = null, Updated = flag } });
+    db.Audit.Add(new AuditEntry
+    {
+        Action = "create",
+        Actor = actor,
+        FlagKey = flag.Key,
+        DiffJson = new AuditDiff { Before = null, Updated = snapshot }
+    });
     await db.SaveChangesAsync();
 
-    await BroadcastFlagChangeAsync(flag, FlagChangeType.Created);
     await cache.RemoveAsync("flags:all");
+    await BroadcastFlagChangeAsync(snapshot, FlagChangeType.Created);
     return Results.Created($"/api/flags/{flag.Key}", flag);
 }).RequireAuthorization(AuthConstants.Policies.Editor);
 
@@ -170,33 +177,31 @@ app.MapPut("/api/flags/{key}", async (HttpContext httpContext, string key, [From
         });
     }
 
-    var beforeObj = new Flag
-    {
-        Id = existing.Id,
-        Key = existing.Key,
-        Type = existing.Type,
-        BoolValue = existing.BoolValue,
-        StringValue = existing.StringValue,
-        NumberValue = existing.NumberValue,
-        Rules = [.. existing.Rules],
-        UpdatedAt = existing.UpdatedAt
-    };
+    var beforeSnapshot = CloneFlag(existing);
 
     existing.Type = dto.Type;
     existing.BoolValue = dto.BoolValue;
     existing.StringValue = dto.StringValue;
     existing.NumberValue = dto.NumberValue;
-    existing.Rules = dto.Rules ?? new();
+    existing.Rules = dto.Rules is { Count: > 0 } updatedRules
+        ? updatedRules.Select(r => r with { }).ToList()
+        : new List<TargetRule>();
     existing.UpdatedAt = DateTimeOffset.UtcNow;
-    await db.SaveChangesAsync();
 
     var actor = ResolveActor(httpContext);
-    db.Audit.Add(new AuditEntry { Action = "update", Actor = actor, FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = existing } });
+    var afterSnapshot = CloneFlag(existing);
+    db.Audit.Add(new AuditEntry
+    {
+        Action = "update",
+        Actor = actor,
+        FlagKey = key,
+        DiffJson = new AuditDiff { Before = beforeSnapshot, Updated = afterSnapshot }
+    });
     await db.SaveChangesAsync();
 
-    await BroadcastFlagChangeAsync(existing, FlagChangeType.Updated);
     await cache.RemoveAsync($"flag:{key}");
     await cache.RemoveAsync("flags:all");
+    await BroadcastFlagChangeAsync(afterSnapshot, FlagChangeType.Updated);
     return Results.Ok(existing);
 }).RequireAuthorization(AuthConstants.Policies.Editor)
   .Produces<Flag>(StatusCodes.Status200OK)
@@ -204,23 +209,26 @@ app.MapPut("/api/flags/{key}", async (HttpContext httpContext, string key, [From
   .Produces(StatusCodes.Status404NotFound)
   .Produces(StatusCodes.Status409Conflict);
 
-app.MapDelete("api/flags/{key}", async (HttpContext httpContext, string key, AppDbContext db) =>
+app.MapDelete("/api/flags/{key}", async (HttpContext httpContext, string key, AppDbContext db, RedisCache cache) =>
 {
     var existing = await db.Flags.FirstOrDefaultAsync(f => f.Key == key);
     if (existing is null) return Results.NotFound();
-    var beforeObj = CloneFlag(existing);
+    var beforeSnapshot = CloneFlag(existing);
+    var actor = ResolveActor(httpContext);
 
     db.Flags.Remove(existing);
+    db.Audit.Add(new AuditEntry
+    {
+        Action = "delete",
+        Actor = actor,
+        FlagKey = key,
+        DiffJson = new AuditDiff { Before = beforeSnapshot, Updated = null }
+    });
     await db.SaveChangesAsync();
 
-    var actor = ResolveActor(httpContext);
-    db.Audit.Add(new AuditEntry { Action = "delete", Actor = actor, FlagKey = key, DiffJson = new AuditDiff { Before = beforeObj, Updated = null } });
-    await db.SaveChangesAsync();
-
-    var cache = app.Services.GetRequiredService<RedisCache>();
     await cache.RemoveAsync($"flag:{key}");
     await cache.RemoveAsync("flags:all");
-    await BroadcastFlagChangeAsync(beforeObj, FlagChangeType.Deleted);
+    await BroadcastFlagChangeAsync(beforeSnapshot, FlagChangeType.Deleted);
     return Results.NoContent();
 }).RequireAuthorization(AuthConstants.Policies.Editor);
 

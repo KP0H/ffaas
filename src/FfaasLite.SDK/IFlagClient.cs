@@ -13,6 +13,10 @@ public interface IFlagClient : IAsyncDisposable
 
     Task StopRealtimeAsync();
 
+    Task StartBackgroundRefreshAsync(TimeSpan interval, CancellationToken ct = default);
+
+    Task StopBackgroundRefreshAsync();
+
     Task RefreshSnapshotAsync(CancellationToken ct = default);
 
     bool TryGetCachedFlag(string key, out Flag? flag);

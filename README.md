@@ -9,7 +9,9 @@ Feature Flags as Code - minimal infrastructure for shipping boolean, string, and
 - ASP.NET Core 8 HTTP API with CRUD for flags, evaluation endpoint, structured SSE stream (heartbeats + retries), basic audit log, automatic EF Core migrations, and health check.
 - PostgreSQL (`jsonb`) persistence with Entity Framework Core migrations; Redis cache with simple invalidation strategy.
 - Advanced targeting engine: numeric comparisons, regex, segment matching, and percentage rollouts (see `docs/guides/targeting.md`).
+- Hosted service guidance and FlagClient options for bootstrap/background refresh (see `docs/guides/sdk-hosted-service.md`).
 - Admin CLI for managing flags and viewing audit history without crafting HTTP requests.
+- Typed helper generator to scaffold strongly-typed accessors for cached flags.
 - .NET SDK with local cache, realtime SSE synchronisation (backoff/heartbeats), helper extensions, and sample console client.
 - Dockerfile + docker-compose for local stack, GitHub Actions for CI, Docker image publishing, and NuGet trusted publishing.
 - Unit tests for the flag evaluator and SDK client behavior.
@@ -53,12 +55,40 @@ The API exposes CRUD for feature flags, an `Evaluate` endpoint used by SDKs, and
    dotnet run --project src/FfaasLite.Api
    ```
 
-### SDK Sample
-Run the console sample once the API is reachable:
-```powershell
-cd samples/FfaasLite.ConsoleSample
-dotnet run
-```
+### Seed Demo Data
+With the API running, populate the demo flags that power the samples and documentation:
+
+- **PowerShell**
+  ```powershell
+  pwsh ./scripts/seed-demo.ps1
+  # optional overrides
+  pwsh ./scripts/seed-demo.ps1 -BaseUrl http://localhost:8080 -ApiKey dev-editor-token
+  ```
+- **Bash**
+  ```bash
+  ./scripts/seed-demo.sh
+  # optional overrides
+  ./scripts/seed-demo.sh https://my-api.example.com my-editor-token
+  ```
+
+The script idempotently upserts a demo catalog:
+- `new-ui` (boolean) showcasing segment and percentage rollouts.
+- `checkout` (boolean) combining geo, segment, and gradual rollout rules.
+- `ui-ver` (string) with country and email-based overrides.
+- `rate-limit` (number) with segment and version-aware adjustments.
+
+### SDK Samples
+- **Console** - quick evaluation walk-through once the API is reachable:
+  ```powershell
+  cd samples/FfaasLite.ConsoleSample
+  dotnet run
+  ```
+- **Worker** - demonstrates hosting `FlagClient` inside a background service with realtime streaming, typed helpers, and background refresh:
+  ```powershell
+  cd samples/FfaasLite.WorkerSample
+  dotnet run
+  ```
+  Configure the target API and token via `appsettings.json` or environment variables (`FlagClient__BaseUrl`, `FlagClient__ApiKey`).
 
 ## Authentication
 Write operations now require an API key. Two roles are supported:
@@ -213,10 +243,45 @@ if (result.AsBool() == true)
 SDK features:
 - HTTP evaluation with automatic JSON normalization.
 - Realtime SSE subscription with structured change events, heartbeats, and configurable reconnect backoff.
+- Optional preload/bootstrap and background refresh via `FlagClientOptions` + `FlagClient.StartBackgroundRefreshAsync`.
+- Resilience hooks: per-request timeouts and `SendAsyncWrapper` to integrate Polly/circuit-breaker policies.
 - Helper extensions `AsBool`, `AsString`, and `AsNumber`.
 - Designed for dependency injection by supplying a configured `HttpClient`.
 
 See `src/FfaasLite.SDK/README.md` for additional details.
+## FlagClient Options
+```csharp
+var options = new FlagClientOptions
+{
+    BaseUrl = configuration["Ffaas:BaseUrl"] ?? "http://localhost:8080",
+    ApiKey = configuration["Ffaas:ApiKey"],
+    RequestTimeout = TimeSpan.FromSeconds(2),
+    BootstrapOnStartup = true,
+    StartRealtimeStream = true,
+    BackgroundRefresh = new BackgroundRefreshOptions
+    {
+        Enabled = true,
+        Interval = TimeSpan.FromSeconds(30)
+    },
+    SendAsyncWrapper = (next, request, completion, token) =>
+    {
+        // plug Polly or other resilience policies here
+        return next(request, completion, token);
+    }
+};
+```
+
+## Typed Helper Generation
+- See `docs/guides/sdk-hosted-service.md` for full examples.
+```csharp
+var code = client.GenerateTypedHelper(new FlagClientTypedHelperOptions
+{
+    Namespace = "MyApp.Flags",
+    ClassName = "FeatureFlags"
+});
+File.WriteAllText("FeatureFlags.g.cs", code);
+```
+
 
 ## Development
 - Restore/build/test:

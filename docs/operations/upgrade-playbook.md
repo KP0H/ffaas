@@ -11,7 +11,7 @@
 1. Deploy the new container image.
 2. On startup the API runs EF Core migrations automatically. Watch logs for `Database migration completed`.
 3. Run smoke tests (`/health`, `/api/flags`, `/api/evaluate`).
-4. Monitor metrics for 5–10 minutes and confirm no error spikes.
+4. Monitor metrics for 5-10 minutes and confirm no error spikes.
 
 ## 3. Multi-instance / Blue-Green
 1. Set `FFAAAS_SKIP_MIGRATIONS=true` on all **existing** instances to prevent race conditions.
@@ -21,7 +21,7 @@
 
 ## 4. Canary Rollout
 1. Pick one instance in the pool and allow migrations (flag disabled on the rest).
-2. Route a small percentage of traffic (5–10 %) to the canary.
+2. Route a small percentage of traffic (5-10 %) to the canary.
 3. Observe error rate, DB locks, and migration duration.
 4. Gradually expand to the full fleet, removing the skip flag along the way.
 

@@ -22,7 +22,7 @@ FFaaS rules let you tailor flag values for specific users or cohorts before fall
 
 - **priority**: lower numbers run first; `null` values execute last.
 - **override** fields apply when the rule matches; missing overrides fall back to the flag default.
-- **percentage** controls rollout thresholds (0–100); `percentageAttribute` chooses the attribute used for hashing (defaults to `attribute` or `userId`).
+- **percentage** controls rollout thresholds (0-100); `percentageAttribute` chooses the attribute used for hashing (defaults to `attribute` or `userId`).
 - **segmentDelimiter** defines how multi-value attributes and rule values are split when using the `segment` operator.
 
 ## Available Operators
@@ -81,7 +81,7 @@ Percentage rules enable gradual releases:
 }
 ```
 
-- `percentage`: threshold (0–100). Values ≤0 never match; values ≥100 always match.
+- `percentage`: threshold (0-100). Values <=0 never match; values >=100 always match.
 - `value`: optional salt to differentiate multiple rollouts under the same flag key.
 - `percentageAttribute`: overrides the basis used for hashing (e.g., `"sessionId"`). Defaults to `attribute` or `userId`.
 

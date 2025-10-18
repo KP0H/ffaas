@@ -3,21 +3,19 @@
 ## Current Snapshot
 - **API**: Flag CRUD, evaluation, audit log, health check, a hardened SSE stream (heartbeats/retry hints), and automatic EF Core migrations on ASP.NET Core 8.
 - **Storage**: PostgreSQL `jsonb` for flags/audit with Entity Framework Core migrations; Redis-backed cache with basic invalidation.
-- **SDK**: .NET client with local cache, realtime SSE sync (heartbeats/backoff), snapshot helpers, sample console app, and unit tests.
+- **SDK**: .NET client with local cache, realtime SSE sync (heartbeats/backoff), snapshot helpers, console/worker samples, and unit tests.
 - **Tooling**: Dockerfile + docker-compose for local stack, GitHub Actions CI (build/test, Docker lint) and release pipelines (Docker image, NuGet).
 - **Coverage**: Unit tests plus realtime SSE/SDK integration tests; broader end-to-end coverage with Postgres/Redis remains outstanding.
 
 ## Next Release (v0.2.0) Goals
 ### Hardening the Service
-- Add API authentication (PAT or JWT) and role separation for write operations; surface authenticated actor in `AuditEntry`.
-- Implement optimistic concurrency (row version or `UpdatedAt` check) and improve cache invalidation to avoid stale reads after concurrent updates.
 - Persist a short-lived SSE journal for clients using `Last-Event-ID` and publish connection/heartbeat metrics.
 - Add automated schema drift detection and alerting when migrations are pending.
 - Externalize API keys/secrets to managed secret stores with rotation guidance and remove plaintext configuration.
 - Publish ETag headers for flag resources so clients can rely on `If-Match` instead of custom timestamps.
+- Harden cache invalidation by tracking per-flag cache stamps and exposing cache hit metrics.
 
 ### Developer & User Experience
-- Deliver richer SDK ergonomics: preload flags on startup, typed helpers per flag, resilience policies, optional background refresh without SSE.
 - Enhance the admin CLI with interactive flows and bulk import/export capabilities.
 - Provide rule authoring UX (templates/validation) to simplify advanced targeting configuration.
 - Write quick-start guides for Windows/macOS/Linux, including sample seed scripts for flags.
@@ -37,8 +35,11 @@
 - UI/SDK support for experiments (A/B testing) with metrics hooks.
 
 ## Recently Completed
+- SDK ergonomics: preload/background refresh options, resilience hooks, typed helpers, and hosted-service docs.
 - Realtime channel stabilised: structured SSE events, heartbeat/resend hints, WebSocket retired, SDK backoff/heartbeat support, and integration coverage.
 - Initial MVP shipped: CRUD API, evaluation engine, Redis cache, SSE broadcast, .NET SDK, CI, and release automation.
+- Worker sample added to demonstrate hosted FlagClient usage with realtime streaming and background refresh.
+- Audit log coverage expanded with create/update/delete diff tests ensuring actor attribution.
 - Targeting enhancements: numeric comparisons, regex, segment matching, and percentage rollouts with updated documentation/tests.
 - Admin CLI delivered: flag CRUD, optimistic concurrency aware upsert, audit viewer, and CLI docs/tests.
 - Migration automation & upgrade playbook: startup hosted service with retries, skip flag, and documented rollout guidance.

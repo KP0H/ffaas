@@ -1,0 +1,16 @@
+[
+  {
+    "attribute": "email",
+    "operator": "regex",
+    "value": "^[^@]+@corp\\.com$",
+    "priority": 5,
+    "stringOverride": "v3"
+  },
+  {
+    "attribute": "country",
+    "operator": "eq",
+    "value": "NL",
+    "priority": 10,
+    "stringOverride": "v2"
+  }
+]
