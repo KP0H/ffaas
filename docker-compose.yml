@@ -27,10 +27,22 @@ services:
       ASPNETCORE_ENVIRONMENT: Development
       ConnectionStrings__postgres: Host=db;Port=5432;Database=ffaas;Username=ffaas;Password=ffaas
       ConnectionStrings__redis: redis:6379
+      DataProtection__KeysDirectory: /var/ffaas/dataprotection
+      Auth__ApiKeys__0__Name: local-reader
+      Auth__ApiKeys__0__Key: dev-reader-token
+      Auth__ApiKeys__0__Roles__0: Reader
+      Auth__ApiKeys__1__Name: local-editor
+      Auth__ApiKeys__1__Key: dev-editor-token
+      Auth__ApiKeys__1__Roles__0: Editor
     ports:
       - "8080:8080"
+    volumes:
+      - dataprotection-keys:/var/ffaas/dataprotection
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_started
+
+volumes:
+  dataprotection-keys:

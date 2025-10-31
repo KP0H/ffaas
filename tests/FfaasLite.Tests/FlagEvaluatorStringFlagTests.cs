@@ -1,6 +1,5 @@
 using FfaasLite.Core.Flags;
 using FfaasLite.Core.Models;
-using System.Diagnostics.Metrics;
 
 namespace FfaasLite.Tests
 {
@@ -98,6 +97,33 @@ namespace FfaasLite.Tests
 
             Assert.False((bool)res.Value!);     // BoolOverride is null, take default
             Assert.Equal("rule", res.Variant);  // rule, but without override
+        }
+
+        [Fact]
+        public void Segment_Operator_Finds_Value_In_List()
+        {
+            var flag = MakeBoolFlag(false,
+                new TargetRule("segments", "segment", "beta,internal", Priority: 1, BoolOverride: true));
+
+            var ctx = new EvalContext(UserId: "u1", Attributes: new() { ["segments"] = "pilot,beta" });
+
+            var res = new FlagEvaluator().Evaluate(flag, ctx);
+
+            Assert.True((bool)res.Value!);
+            Assert.Equal("rule", res.Variant);
+        }
+
+        [Fact]
+        public void Segment_Operator_Honours_Custom_Delimiter()
+        {
+            var flag = MakeBoolFlag(false,
+                new TargetRule("segments", "segment", "qa|ops", Priority: 1, BoolOverride: true, SegmentDelimiter: "|"));
+
+            var ctx = new EvalContext(UserId: "u1", Attributes: new() { ["segments"] = "dev|ops" });
+
+            var res = new FlagEvaluator().Evaluate(flag, ctx);
+
+            Assert.True((bool)res.Value!);
         }
     }
 }

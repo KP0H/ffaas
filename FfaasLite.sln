@@ -1,4 +1,4 @@
-﻿
+
 Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.14.36414.22
@@ -17,9 +17,17 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FfaasLite.SDK", "src\FfaasL
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FfaasLite.Tests", "tests\FfaasLite.Tests\FfaasLite.Tests.csproj", "{6E7BD43D-F017-437E-A853-4CBE93B49E83}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tools", "tools", "{58A6B57B-92A0-4F3E-9D05-65789E0BC949}"
+EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "samples", "samples", "{8645B4A5-C1BA-44BE-989E-678B630F7539}"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FfaasLite.ConsoleSample", "samples\FfaasLite.ConsoleSample\FfaasLite.ConsoleSample.csproj", "{F1D00537-EF20-4815-A687-6A135CCB1ED8}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FfaasLite.AdminCli", "tools\FfaasLite.AdminCli\FfaasLite.AdminCli.csproj", "{7F3BC6C1-9E1D-4A0C-8DAE-8F2035C6C7B3}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FfaasLite.AdminCli.Tests", "tests\FfaasLite.AdminCli.Tests\FfaasLite.AdminCli.Tests.csproj", "{8646BF85-2FAF-4F8D-9FDB-3DAB0A37A41F}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "FfaasLite.WorkerSample", "samples\FfaasLite.WorkerSample\FfaasLite.WorkerSample.csproj", "{D0B38CAA-C7DB-4CDE-AF57-20B22CA97C2C}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -51,6 +59,18 @@ Global
 		{F1D00537-EF20-4815-A687-6A135CCB1ED8}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F1D00537-EF20-4815-A687-6A135CCB1ED8}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F1D00537-EF20-4815-A687-6A135CCB1ED8}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7F3BC6C1-9E1D-4A0C-8DAE-8F2035C6C7B3}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7F3BC6C1-9E1D-4A0C-8DAE-8F2035C6C7B3}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7F3BC6C1-9E1D-4A0C-8DAE-8F2035C6C7B3}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7F3BC6C1-9E1D-4A0C-8DAE-8F2035C6C7B3}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8646BF85-2FAF-4F8D-9FDB-3DAB0A37A41F}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8646BF85-2FAF-4F8D-9FDB-3DAB0A37A41F}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8646BF85-2FAF-4F8D-9FDB-3DAB0A37A41F}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8646BF85-2FAF-4F8D-9FDB-3DAB0A37A41F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{D0B38CAA-C7DB-4CDE-AF57-20B22CA97C2C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{D0B38CAA-C7DB-4CDE-AF57-20B22CA97C2C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{D0B38CAA-C7DB-4CDE-AF57-20B22CA97C2C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{D0B38CAA-C7DB-4CDE-AF57-20B22CA97C2C}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -62,6 +82,9 @@ Global
 		{78F1D4BB-1B5C-43C2-ADBF-613DB535736D} = {02EA681E-C7D8-13C7-8484-4AC65E1B71E8}
 		{6E7BD43D-F017-437E-A853-4CBE93B49E83} = {86C634CF-C6D9-460D-AA19-47694FFE414D}
 		{F1D00537-EF20-4815-A687-6A135CCB1ED8} = {8645B4A5-C1BA-44BE-989E-678B630F7539}
+		{7F3BC6C1-9E1D-4A0C-8DAE-8F2035C6C7B3} = {58A6B57B-92A0-4F3E-9D05-65789E0BC949}
+		{8646BF85-2FAF-4F8D-9FDB-3DAB0A37A41F} = {86C634CF-C6D9-460D-AA19-47694FFE414D}
+		{D0B38CAA-C7DB-4CDE-AF57-20B22CA97C2C} = {8645B4A5-C1BA-44BE-989E-678B630F7539}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {45C23CC5-1E15-45EC-937F-F3AA3FAF0864}

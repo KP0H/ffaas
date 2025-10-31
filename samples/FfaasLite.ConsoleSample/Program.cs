@@ -1,7 +1,8 @@
-﻿using FfaasLite.Core.Flags;
+using FfaasLite.Core.Flags;
 using FfaasLite.SDK;
 
 var client = new FlagClient("http://localhost:8080");
+// Tip: for admin requests (POST/PUT/DELETE /api/flags) include an API key header such as "Authorization: Bearer dev-editor-token".
 
 var ctx = new EvalContext(
     UserId: "u3",
@@ -29,4 +30,10 @@ else
 {
     Console.WriteLine("Using old UI");
 }
+
+var rateLimit = await client.EvaluateAsync("rate-limit", ctx);
+Console.WriteLine($"Flag '{rateLimit.Key}' evaluated:");
+Console.WriteLine($"  Value   : {rateLimit.Value}");
+Console.WriteLine($"  Variant : {rateLimit.Variant}");
+Console.WriteLine($"  Type    : {rateLimit.Type}");
 Console.ReadKey();
